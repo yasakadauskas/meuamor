@@ -317,16 +317,17 @@ def _carregar_musica_fundo():
     script_dir = os.path.dirname(os.path.abspath(__file__)) if not getattr(sys, 'frozen', False) else base
     cwd = os.getcwd()
     caminhos = []
-    for nome in ('videoplayback.mp3', 'musica.mp3', 'music.mp3', 'fundo.mp3'):
+    for nome in ('videoplayback.mp3', 'musica.mp3', 'music.mp3', 'fundo.mp3',
+                 'videoplayback.ogg', 'musica.ogg', 'music.ogg', 'fundo.ogg'):
         for d in (base, script_dir, cwd):
             p = os.path.join(d, nome)
             if p not in caminhos:
                 caminhos.append(p)
-    # Qualquer MP3 na pasta base e no script_dir
+    # Qualquer MP3/OGG na pasta base e no script_dir
     for search_dir in set([base, script_dir, cwd]):
         try:
             for f in sorted(os.listdir(search_dir)):
-                if f.lower().endswith('.mp3'):
+                if f.lower().endswith(('.mp3', '.ogg', '.wav')):
                     p = os.path.join(search_dir, f)
                     if p not in caminhos:
                         caminhos.append(p)
@@ -337,16 +338,42 @@ def _carregar_musica_fundo():
         if p in vistos:
             continue
         vistos.add(p)
-        if os.path.exists(p):
-            try:
-                pygame.mixer.music.load(p)
-                pygame.mixer.music.set_volume(0.40)
-                MUSICA_FUNDO_OK = True
-                print(f"[Musica] Carregada: {p}")
-                return
-            except Exception as e:
-                print(f"[Musica] Erro ao carregar {p}: {e}")
-    print("[Musica] Nenhum MP3 encontrado. Coloca videoplayback.mp3 na pasta do jogo.")
+        if not os.path.exists(p):
+            continue
+        try:
+            pygame.mixer.music.load(p)
+            pygame.mixer.music.set_volume(0.40)
+            MUSICA_FUNDO_OK = True
+            print(f"[Musica] Carregada com sucesso: {p}")
+            return
+        except Exception as e:
+            print(f"[Musica] Nao carregou {os.path.basename(p)}: {e}")
+    # Nenhum arquivo funcionou — tenta converter MP3 -> OGG com pydub
+    print("[Musica] Tentando converter MP3 para OGG via pydub...")
+    for search_dir in set([base, script_dir, cwd]):
+        try:
+            for f in sorted(os.listdir(search_dir)):
+                if f.lower().endswith('.mp3'):
+                    mp3_path = os.path.join(search_dir, f)
+                    ogg_path = mp3_path[:-4] + '_converted.ogg'
+                    try:
+                        from pydub import AudioSegment
+                        seg = AudioSegment.from_mp3(mp3_path)
+                        seg.export(ogg_path, format='ogg')
+                        pygame.mixer.music.load(ogg_path)
+                        pygame.mixer.music.set_volume(0.40)
+                        MUSICA_FUNDO_OK = True
+                        print(f"[Musica] Convertido e carregado: {ogg_path}")
+                        return
+                    except ImportError:
+                        print("[Musica] pydub nao instalado. Para converter: pip install pydub")
+                    except Exception as e2:
+                        print(f"[Musica] Falha na conversao: {e2}")
+        except OSError:
+            pass
+    print("[Musica] FALHA: nao foi possivel carregar nenhum audio.")
+    print("[Musica] SOLUCAO: converte o videoplayback.mp3 para .ogg (ex: via Audacity ou online)")
+    print("[Musica] e coloca o videoplayback.ogg na mesma pasta do .py")
 
 
 # NÃO carregamos a música aqui — aguardamos até após pygame.display.set_mode()
@@ -1059,7 +1086,7 @@ def desenharCarroPixel(x, y):
         cone = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
         pygame.draw.polygon(cone, (255, 244, 163, 70),
                             [(x + 48, y + 11), (x + 85, y + 2), (x + 85, y + 22)])
-        alvo.blit(cone, (0, 0))
+        tela.blit(cone, (0, 0))  # sempre blita na tela base (que aceita SRCALPHA)
     if flash:
         alvo.set_alpha(90)
         tela.blit(alvo, (0, 0))
@@ -1392,15 +1419,15 @@ def atualizar():
                 iniciarTransicao(CENA_3_VIAGEM)
 
     elif G.cenaAtual == CENA_3_VIAGEM:
+        # Diálogo do Lusca: exibir quando o carro entra na tela
+        if not G.luscaDialogoMostrado and G.carroX >= 20:
+            G.luscaDialogoMostrado = True
+            caixaDialogo.iniciar("Lusca: *estrala o dedo* hmmm que catupiry bom vei!")
         if G.carroX > LARGURA:
             iniciarTransicao(CENA_4_CHEGADA_CASA)
 
     elif G.cenaAtual == CENA_4_CHEGADA_CASA:
         if G.kikaoEstado == "conduzindo_para_parar":
-            # Diálogo do Lusca: exibir quando o carro entra na tela
-            if not G.luscaDialogoMostrado and G.carroX >= 20:
-                G.luscaDialogoMostrado = True
-                caixaDialogo.iniciar("Lusca: *estrala o dedo* hmmm que catupiry bom vei!")
             if G.carroX >= 60:
                 G.carroX = 60
                 G.kikaoEstado = "casal_controlado"
