@@ -1,31 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-ROTEIRO AFETIVO - Uma aventura pixelizada acolhedora de carinho e código.
-
-Versão Python (pygame).
-
-Como rodar (precisa de Python instalado):
-    python roteiro_afetivo.py
-    (o pygame é instalado automaticamente na primeira execução se faltar)
-
-Como gerar um executável para qualquer PC SEM Python:
-    Windows:  duplo-clique em build_windows.bat  (ou via GitHub Actions)
-    -> gera dist/RoteiroAfetivo.exe
-
->>> SOBRE O VÍDEO E MÚSICA <<<
-Coloca o teu vídeo na MESMA PASTA do jogo (ao lado do .exe), de preferência
-chamado:  meu_video.mp4   (também aceita .mov .avi .mkv .webm .m4v, ou qualquer
-vídeo que estiver na pasta).
-Coloca o arquivo  videoplayback.mp3  também na MESMA PASTA do jogo.
-
-Controlos:
-    - WASD ou setas: move o carro / o casal / a Mimi (em TODAS as cenas).
-    - Clica e arrasta com o rato dentro do ecrã para guiar também.
-    - ENTER ou clique avança os diálogos.
-    - R reinicia.
-    - P pausa.  M muta o som.  + / - ajusta o volume.  F11 tela cheia.
-"""
-
 import math
 import random
 import sys
@@ -811,7 +783,7 @@ def desenharCoracoes():
 PLACAS_FIXAS = [
     (40, 110, "te amooo"),
     (150, 124, "vc é incrível moo"),
-    (250, 110, "mey gatinhooo"),
+    (250, 110, "meu gatinho"),
     (348, 124, "mwwwwac"),
 ]
 
@@ -827,18 +799,31 @@ DIALOGO_CARRO = {
     'inicio': {'tipo': 'escolha', 'txt': "mimi: quer pedir um ifood??",
                'opcoes': [("1. pedir ifood", 'r1'), ("2. fazer janta", 'r2')]},
 
+    # ---- Ramo 1: pedir ifood ----
     'r1': {'tipo': 'fala', 'txt': "lusca: claro mo, quer comer o que?", 'next': 'm1'},
-    'm1': {'tipo': 'fala', 'txt': "mimi: pode escolher", 'next': 'esc2'},
-    'esc2': {'tipo': 'escolha', 'txt': "lusca: hmm... (escolhe a resposta)",
-             'opcoes': [("1. nao sei escolher", 'r1a'), ("2. pode ser ifood", 'r1b')]},
-    'r1a': {'tipo': 'fala', 'txt': "lusca: não sei, eu sempre escolho errado", 'next': 'fim1'},
-    'r1b': {'tipo': 'fala', 'txt': "lusca: pode ser ifood ent moo", 'next': 'fim1'},
+    'm1': {'tipo': 'escolha', 'txt': "mimi: pode escolher",
+           'opcoes': [("1. nao sei escolher", 'r1a'), ("2. kikão???", 'r1b')]},
 
+    'r1a': {'tipo': 'fala', 'txt': "lusca: não sei, eu sempre escolho errado", 'next': 'a1'},
+    'a1': {'tipo': 'fala', 'txt': "mimi: lanchinho??", 'next': 'a2'},
+    'a2': {'tipo': 'fala', 'txt': "lusca: uhuuuuul", 'next': None},
+
+    'r1b': {'tipo': 'fala', 'txt': "lusca: kikão???", 'next': 'b1'},
+    'b1': {'tipo': 'fala', 'txt': "mimi: frango catupiry??", 'next': 'b2'},
+    'b2': {'tipo': 'fala', 'txt': "lusca: of course meu amor", 'next': None},
+
+    # ---- Ramo 2: fazer janta ----
     'r2': {'tipo': 'fala', 'txt': "lusca: vamo fazer janta moo", 'next': 'm2'},
-    'm2': {'tipo': 'fala', 'txt': "mimi: afff", 'next': 'fim1'},
+    'm2': {'tipo': 'escolha', 'txt': "mimi: afff",
+           'opcoes': [("1. pode ser um kikas??", 'r2a'), ("2. lanchinho??", 'r2b')]},
 
-    'fim1': {'tipo': 'fala', 'txt': "mimi: lanchinho??", 'next': 'fim2'},
-    'fim2': {'tipo': 'fala', 'txt': "lusca: uhuuuuul", 'next': None},
+    'r2a': {'tipo': 'fala', 'txt': "lusca: pode ser um kikas??", 'next': 'c1'},
+    'c1': {'tipo': 'fala', 'txt': "mimi: claro mooo", 'next': 'c2'},
+    'c2': {'tipo': 'fala', 'txt': "lusca: uhuuuul", 'next': None},
+
+    'r2b': {'tipo': 'fala', 'txt': "lusca: lanchinho??", 'next': 'd1'},
+    'd1': {'tipo': 'fala', 'txt': "mimi: kikas então?", 'next': 'd2'},
+    'd2': {'tipo': 'fala', 'txt': "lusca: só se for agora", 'next': None},
 }
 
 
@@ -2217,6 +2202,18 @@ def tratarClique(mx_janela, my_janela):
             bx, by, bw, bh = btn
             if bx <= mouseX <= bx + bw and by <= mouseY <= by + bh:
                 G.mostrarCartinha = False
+        return
+
+    # Escolhas do diálogo do carro: clicar num botão seleciona a opção
+    if G.carroEscolha and G.carroBtnRects:
+        for (bx, by, bw, bh, idx) in G.carroBtnRects:
+            if bx <= mouseX <= bx + bw and by <= mouseY <= by + bh:
+                escolher_opcao_carro(idx)
+                return
+        # clicar fora dos botões só termina de digitar a pergunta
+        if caixaDialogo.ativo:
+            caixaDialogo.indiceLetra = float(len(caixaDialogo.textoCompleto))
+            caixaDialogo.textoAtual = caixaDialogo.textoCompleto
         return
 
     if G.cenaAtual == CENA_INTRO:
