@@ -319,14 +319,19 @@ def _carregar_musica_fundo():
     caminhos = []
     for nome in ('videoplayback.mp3', 'musica.mp3', 'music.mp3', 'fundo.mp3'):
         for d in (base, script_dir, cwd):
-            caminhos.append(os.path.join(d, nome))
-    # Qualquer MP3 na pasta base
-    try:
-        for f in sorted(os.listdir(base)):
-            if f.lower().endswith('.mp3'):
-                caminhos.append(os.path.join(base, f))
-    except OSError:
-        pass
+            p = os.path.join(d, nome)
+            if p not in caminhos:
+                caminhos.append(p)
+    # Qualquer MP3 na pasta base e no script_dir
+    for search_dir in set([base, script_dir, cwd]):
+        try:
+            for f in sorted(os.listdir(search_dir)):
+                if f.lower().endswith('.mp3'):
+                    p = os.path.join(search_dir, f)
+                    if p not in caminhos:
+                        caminhos.append(p)
+        except OSError:
+            pass
     vistos = set()
     for p in caminhos:
         if p in vistos:
@@ -340,12 +345,12 @@ def _carregar_musica_fundo():
                 print(f"[Musica] Carregada: {p}")
                 return
             except Exception as e:
-                print(f"[Musica] Erro: {e}")
+                print(f"[Musica] Erro ao carregar {p}: {e}")
     print("[Musica] Nenhum MP3 encontrado. Coloca videoplayback.mp3 na pasta do jogo.")
 
 
-
-_carregar_musica_fundo()
+# NÃO carregamos a música aqui — aguardamos até após pygame.display.set_mode()
+# para garantir que o mixer está totalmente inicializado.
 
 _t_motor = 0
 _t_passos = 0
@@ -374,10 +379,13 @@ def tocar_passos():
 
 def iniciar_musica_fundo():
     global _musica_fundo_tocando
-    if MUSICA_FUNDO_OK and not _musica_fundo_tocando:
+    if not MUSICA_FUNDO_OK:
+        return
+    if not _musica_fundo_tocando:
         try:
             pygame.mixer.music.play(-1)  # -1 = loop infinito
             _musica_fundo_tocando = True
+            print("[Musica] Tocando em loop.")
         except Exception as e:
             print(f"[Música] Erro ao tocar: {e}")
 
@@ -466,6 +474,9 @@ class G:
     somChegadaTocado = False
     somDingTocado = False
 
+    # Controle do diálogo do Lusca na cena 4
+    luscaDialogoMostrado = False
+
 
 teclasPressionadas = {}
 
@@ -473,6 +484,9 @@ janela = pygame.display.set_mode((LARGURA * ESCALA, ALTURA * ESCALA))
 pygame.display.set_caption("Joguinho pro Meu Amor <3")
 clock = pygame.time.Clock()
 tela = pygame.Surface((LARGURA, ALTURA))
+
+# Carregar música APÓS set_mode() para garantir que o mixer está pronto
+_carregar_musica_fundo()
 
 FONT_CACHE = {}
 _fila_texto = []
@@ -900,6 +914,7 @@ def resetarVariaveisCenas():
     G.cartaRect = None
     G.somChegadaTocado = False
     G.somDingTocado = False
+    G.luscaDialogoMostrado = False
     caixaDialogo.ativo = False
     for key in list(teclasPressionadas.keys()):
         teclasPressionadas[key] = False
@@ -938,6 +953,7 @@ def gerenciarTransicao():
         elif G.cenaAtual == CENA_4_CHEGADA_CASA:
             G.carroX = -60
             G.kikaoEstado = "conduzindo_para_parar"
+            G.luscaDialogoMostrado = False
             atualizarStatus("Cena 4: Conduz com carinho até casa...")
         elif G.cenaAtual == CENA_5_QUARTO:
             G.quartoTimer = 0
@@ -1073,11 +1089,11 @@ def desenharMulherPixel(x, y, bobbing=False):
     # Pernas
     pygame.draw.rect(tela, hx('#261b2e'), (x + 2, y + 18 + b, 3, 8 - b))
     pygame.draw.rect(tela, hx('#261b2e'), (x + 7, y + 18 + b, 3, 8 - b))
-    # Blusa verde (mudança: era #b33c70 rosa, agora verde)
+    # Blusa verde
     pygame.draw.rect(tela, hx('#2d7a3a'), (x + 1, y + 10 + b, 10, 9))
     # Rosto
     pygame.draw.rect(tela, hx('#f9cba0'), (x + 2, y + 3 + b, 8, 7))
-    # Cabelo castanho (mudança: era #e8c851 loiro, agora castanho)
+    # Cabelo castanho
     pygame.draw.rect(tela, hx('#6b3a1f'), (x + 1, y + 1 + b, 10, 3))
     pygame.draw.rect(tela, hx('#6b3a1f'), (x + 1, y + 4 + b, 2, 7))
     pygame.draw.rect(tela, hx('#6b3a1f'), (x + 9, y + 4 + b, 2, 7))
@@ -1151,19 +1167,15 @@ def desenharQuarto():
     pygame.draw.rect(tela, hx('#e8607f'), (162, 30, 8, 4))
     pygame.draw.rect(tela, hx('#e8607f'), (164, 33, 4, 3))
 
-    # JANELA: posicionada na parede esquerda
     janela_x, janela_y = 10, 40
     janela_w, janela_h = 80, 65
-    # Usa subsurface para clipar o conteúdo da janela
     janela_surf = pygame.Surface((janela_w, janela_h))
     if not G.quartoLuzAcesa:
-        # Noite: céu escuro com estrelas
         janela_surf.fill(hx('#0e1430'))
         for sx, sy in [(8, 8), (22, 18), (38, 10), (55, 22), (18, 40), (50, 48)]:
             pygame.draw.rect(janela_surf, hx('#fdf6c8'), (sx, sy, 1, 1))
         pygame.draw.circle(janela_surf, hx('#f2efbf'), (62, 14), 5)
     else:
-        # Dia: gradiente de céu claro desenhado diretamente na subsurface
         bandas = 8
         h_banda = janela_h / bandas
         c1, c2 = hx('#9fc6dc'), hx('#dfeef2')
@@ -1171,13 +1183,10 @@ def desenharQuarto():
             t = i / max(bandas - 1, 1)
             cor = lerp_cor(c1, c2, t)
             pygame.draw.rect(janela_surf, cor, (0, int(i * h_banda), janela_w, int(h_banda) + 1))
-        # Nuvenzinha
         pygame.draw.rect(janela_surf, hx('#ffffff'), (20, 20, 20, 8))
         pygame.draw.rect(janela_surf, hx('#ffffff'), (24, 16, 12, 8))
     tela.blit(janela_surf, (janela_x, janela_y))
-    # Moldura da janela por cima
     pygame.draw.rect(tela, hx('#1e110a'), (janela_x, janela_y, janela_w, janela_h), 2)
-    # Divisórias (cruz)
     pygame.draw.line(tela, hx('#1e110a'), (janela_x + janela_w // 2, janela_y),
                      (janela_x + janela_w // 2, janela_y + janela_h), 1)
     pygame.draw.line(tela, hx('#1e110a'), (janela_x, janela_y + janela_h // 2),
@@ -1203,7 +1212,6 @@ def desenharQuarto():
     else:
         pygame.draw.rect(tela, hx('#1e1e24'), (G.mesaX + 18, G.mesaY + 10, 15, 10))
 
-    # Cama (base)
     pygame.draw.rect(tela, hx('#6e4424'), (G.camaX, G.camaY, 60, 120))
     pygame.draw.rect(tela, hx('#e3e3f0'), (G.camaX + 2, G.camaY + 28, 56, 92))
     pygame.draw.rect(tela, hx('#cdb4e0'), (G.camaX + 2, G.camaY + 28, 56, 6))
@@ -1231,20 +1239,17 @@ def desenharTelaNotebook(t):
 def desenharTelaIntro():
     t = G.introTimer
 
-    # Fundo gradiente estrelado
     pulso = (math.sin(t * 0.018) + 1) / 2
     c1 = lerp_cor(hx('#140820'), hx('#200c36'), pulso)
     c2 = lerp_cor(hx('#0a1238'), hx('#162048'), pulso)
     desenharCeu(c1, c2, 0, ALTURA)
 
-    # Estrelas piscando
     for sx, sy, fase in G.introEstrelas:
         brilho = (math.sin(t * 0.04 + fase * 9) + 1) / 2
         a = int(brilho * 190 + 65)
         tam = 1 if brilho < 0.55 else 2
         pygame.draw.rect(tela, (a, a, min(255, a + 50)), (sx, sy, tam, tam))
 
-    # Coraçõezinhos flutuantes (sem bola grande - removido o coração central grande)
     for i in range(6):
         ang = t * 0.013 + i * (math.pi * 2 / 6)
         hcx = LARGURA // 2 + int(math.cos(ang) * (55 + i * 12))
@@ -1257,17 +1262,14 @@ def desenharTelaIntro():
         pygame.draw.polygon(hs, (240, 80, 130, a_c), pontos)
         tela.blit(hs, (hcx - sz*2, hcy - sz*2))
 
-    # Título com dupla sombra
     for ox, oy, cor_t in [(2, 2, hx('#500030')), (1, 1, hx('#800050')), (0, 0, hx('#ffd0e8'))]:
         texto(tela, "joguinho pro", LARGURA // 2 + ox, 55 + oy, 23, cor_t, align='center', bold=True)
     for ox, oy, cor_t in [(2, 2, hx('#500030')), (1, 1, hx('#800050')), (0, 0, hx('#ff88bb'))]:
         texto(tela, "meu amor  <3", LARGURA // 2 + ox, 82 + oy, 23, cor_t, align='center', bold=True)
 
-    # Mini casal (sem a bola grande rosa)
     desenharMulherPixel(LARGURA // 2 - 24, 148)
     desenharHomemPixel(LARGURA // 2 + 10, 148)
 
-    # Botão "começar" pulsando
     alfa_btn = int((math.sin(t * 0.07) + 1) / 2 * 160 + 95)
     cor_btn = (min(255, alfa_btn + 60), alfa_btn, min(255, alfa_btn + 90))
     texto(tela, "ENTER ou clique para começar", LARGURA // 2, 196, 11, cor_btn,
@@ -1294,19 +1296,14 @@ TEXTO_CARTA = [
 
 
 def desenharOverlayCarta():
-    """Desenha a cartinha como overlay em toda a tela (sem linhas)."""
-    # Fundo escuro semitransparente
     ov = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
     ov.fill((0, 0, 0, 200))
     tela.blit(ov, (0, 0))
 
-    # Papel da carta (sem linhas)
     cx, cy, cw, ch = 30, 20, 340, 245
     pygame.draw.rect(tela, hx('#fffdf0'), (cx, cy, cw, ch))
     pygame.draw.rect(tela, hx('#e8c88a'), (cx, cy, cw, ch), 2)
-    # Coração no topo
     texto(tela, "♥", LARGURA // 2, cy + 6, 14, hx('#c0305a'), align='center', bold=True)
-    # Texto da carta
     y_off = cy + 24
     for (linha, destaque, bold_linha) in TEXTO_CARTA:
         if linha == "":
@@ -1315,12 +1312,10 @@ def desenharOverlayCarta():
         cor_linha = hx('#c0305a') if destaque else hx('#3a2520')
         texto(tela, linha, LARGURA // 2, y_off, 11, cor_linha, align='center', bold=bold_linha)
         y_off += 16
-    # Botão fechar
     bx, by, bw, bh = LARGURA // 2 - 40, cy + ch - 22, 80, 16
     pygame.draw.rect(tela, hx('#c0305a'), (bx, by, bw, bh))
     pygame.draw.rect(tela, hx('#e8a0b8'), (bx, by, bw, bh), 1)
     texto(tela, "fechar  ♥", LARGURA // 2, by + 2, 10, hx('#ffffff'), align='center', bold=True)
-    # Guarda o rect do botão fechar (em coordenadas da tela interna)
     G._cartaFechaBtnRect = (bx, by, bw, bh)
 
 
@@ -1402,6 +1397,10 @@ def atualizar():
 
     elif G.cenaAtual == CENA_4_CHEGADA_CASA:
         if G.kikaoEstado == "conduzindo_para_parar":
+            # Diálogo do Lusca: exibir quando o carro entra na tela
+            if not G.luscaDialogoMostrado and G.carroX >= 20:
+                G.luscaDialogoMostrado = True
+                caixaDialogo.iniciar("Lusca: *estrala o dedo* hmmm que catupiry bom vei!")
             if G.carroX >= 60:
                 G.carroX = 60
                 G.kikaoEstado = "casal_controlado"
@@ -1578,11 +1577,9 @@ def desenhar():
         G.playRect = None
         G.cartaRect = None
         if G.cliqueDisponivel:
-            # Centro da tela do notebook
             cx = int(x + w / 2)
             cy = int(y + h / 2)
 
-            # Botão de VÍDEO (à esquerda)
             pulso = abs(math.sin(G.puloCliqueNotebook)) * 3
             r_vid = int(16 + pulso)
             vid_cx = int(x + w * 0.30)
@@ -1597,7 +1594,6 @@ def desenhar():
                                 [(vid_cx - 5, vid_cy - 7), (vid_cx - 5, vid_cy + 7), (vid_cx + 7, vid_cy)])
             G.playRect = (vid_cx, vid_cy, r_vid + 6)
 
-            # Botão de CARTINHA (à direita)
             r_carta = int(16 + pulso)
             carta_cx = int(x + w * 0.70)
             carta_cy = cy
@@ -1607,14 +1603,12 @@ def desenhar():
             tela.blit(halo2, (0, 0))
             pygame.draw.circle(tela, hx('#4a90d9'), (carta_cx, carta_cy), r_carta)
             pygame.draw.circle(tela, hx('#ffffff'), (carta_cx, carta_cy), r_carta, 2)
-            # Ícone de carta (envelope)
             ex, ey = carta_cx - 7, carta_cy - 5
             pygame.draw.rect(tela, hx('#ffffff'), (ex, ey, 14, 10), 1)
             pygame.draw.line(tela, hx('#ffffff'), (ex, ey), (carta_cx, carta_cy + 1), 1)
             pygame.draw.line(tela, hx('#ffffff'), (ex + 14, ey), (carta_cx, carta_cy + 1), 1)
             G.cartaRect = (carta_cx, carta_cy, r_carta + 6)
 
-            # Legendas
             cap_vid = "nosso vídeo <3" if G.videoExiste else "video (.mp4)"
             texto(tela, cap_vid, vid_cx, int(y + h) + 4, 10, hx('#ffe9c2'), align='center', bold=True)
             texto(tela, "cartinha ♥", carta_cx, int(y + h) + 4, 10, hx('#c2d8ff'), align='center', bold=True)
@@ -1626,7 +1620,6 @@ def desenhar():
             texto(tela, "Pressiona R para recomeçar", LARGURA / 2, ALTURA - 14, 9,
                   hx('#c9c9d6'), align='center')
 
-        # Overlay da cartinha por cima de tudo
         if G.mostrarCartinha:
             desenharOverlayCarta()
 
@@ -1672,7 +1665,6 @@ def tratarClique(mx_janela, my_janela):
     mouseX = mx_janela / ESCALA
     mouseY = my_janela / ESCALA
 
-    # Se a cartinha está aberta, verifica o botão fechar
     if G.mostrarCartinha:
         btn = getattr(G, '_cartaFechaBtnRect', None)
         if btn:
@@ -1717,7 +1709,6 @@ def main():
                 nome = TECLA_NOME.get(ev.key)
                 if nome:
                     teclasPressionadas[nome] = True
-                # ESC fecha a cartinha se estiver aberta
                 if ev.key == pygame.K_ESCAPE and G.mostrarCartinha:
                     G.mostrarCartinha = False
                 if ev.key == pygame.K_RETURN:
