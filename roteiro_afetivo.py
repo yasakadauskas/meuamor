@@ -1474,7 +1474,11 @@ def atualizar():
         if SONS_OK:
             SOM_INTRO.stop()
         _intro_musica_on = False
-    iniciar_musica_fundo()  # a função já evita tocar duas vezes
+    # A trilha toca só nas cenas de viagem; ao entrar em casa (cena 5) em diante, silêncio.
+    if G.cenaAtual in (CENA_1_ESTRADA, CENA_2_KIKAO, CENA_3_VIAGEM, CENA_4_CHEGADA_CASA):
+        iniciar_musica_fundo()  # a função já evita tocar duas vezes
+    else:
+        parar_musica_fundo()
 
     if G.cenaAtual == CENA_1_ESTRADA:
         if G.carroX >= LARGURA:
