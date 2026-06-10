@@ -1,3 +1,33 @@
+# -*- coding: utf-8 -*-
+"""
+ROTEIRO AFETIVO - Uma aventura pixelizada acolhedora de carinho e código.
+
+Versão Python (pygame).
+
+Como rodar (precisa de Python instalado):
+    python roteiro_afetivo.py
+    (o pygame é instalado automaticamente na primeira execução se faltar)
+
+Como gerar um executável para qualquer PC SEM Python:
+    Windows:  duplo-clique em build_windows.bat  (ou via GitHub Actions)
+    -> gera dist/RoteiroAfetivo.exe
+
+>>> SOBRE O VÍDEO E MÚSICA <<<
+Coloca o teu vídeo na MESMA PASTA do jogo (ao lado do .exe), de preferência
+chamado:  meu_video.mp4
+IMPORTANTE: usa .mp4 com vídeo H.264 e áudio AAC — é o formato que o Windows
+abre sem precisar de codec extra. Evita .mkv, .webm ou .mp4 com H.265/HEVC.
+(Aceita também .wmv .m4v .avi .mov, mas o .mp4 H.264 é o mais garantido.)
+Coloca o arquivo  videoplayback.mp3  também na MESMA PASTA do jogo.
+
+Controlos:
+    - WASD ou setas: move o carro / o casal / a Mimi (em TODAS as cenas).
+    - Clica e arrasta com o rato dentro do ecrã para guiar também.
+    - ENTER ou clique avança os diálogos.
+    - R reinicia.
+    - P pausa.  M muta o som.  + / - ajusta o volume.  F11 tela cheia.
+"""
+
 import math
 import random
 import sys
@@ -37,7 +67,7 @@ ALTURA = 300
 ESCALA = 2
 FPS = 60
 
-VIDEO_EXTS = ('.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.wmv')
+VIDEO_EXTS = ('.mp4', '.wmv', '.m4v', '.avi', '.mov', '.mkv', '.webm')
 VIDEO_PREFERIDOS = ('meu_video', 'video', 'nosso_video', 'mimi')
 
 
