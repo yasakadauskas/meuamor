@@ -23,6 +23,7 @@ Controlos:
     - Clica e arrasta com o rato dentro do ecrã para guiar também.
     - ENTER ou clique avança os diálogos.
     - R reinicia.
+    - P pausa.  M muta o som.  + / - ajusta o volume.  F11 tela cheia.
 """
 
 import math
@@ -411,6 +412,7 @@ def iniciar_musica_fundo():
     if not _musica_fundo_tocando:
         try:
             pygame.mixer.music.play(-1)  # -1 = loop infinito
+            pygame.mixer.music.set_volume(0.0 if _musica_mutada else _volume_musica)
             _musica_fundo_tocando = True
             print("[Musica] Tocando em loop.")
         except Exception as e:
@@ -503,6 +505,14 @@ class G:
 
     # Controle do diálogo do Lusca na cena 4
     luscaDialogoMostrado = False
+
+    # Melhorias novas
+    pausado = False
+    telaCheia = False
+    volumeMsg = ""
+    volumeMsgTimer = 0
+    coracoes = []
+    coracaoTimer = 0
 
 
 teclasPressionadas = {}
@@ -647,6 +657,54 @@ class Pet:
             texto(tela, self.fala, x + 6, by + 1, 6, (0, 0, 0), align='center', bold=True)
 
 
+class CoracaoFlutuante:
+    """Coraçãozinho pixelado que sobe e some, para momentos fofos."""
+    CORES = [hx('#ec607a'), hx('#ff88bb'), hx('#ffd0e8'), hx('#e8607f')]
+
+    def __init__(self, x, y):
+        self.x = float(x)
+        self.y = float(y)
+        self.vy = -random.uniform(0.35, 0.85)
+        self.vx = random.uniform(-0.3, 0.3)
+        self.vida = 1.0
+        self.s = random.choice([2, 2, 3])
+        self.fase = random.uniform(0, math.pi * 2)
+        self.cor = random.choice(CoracaoFlutuante.CORES)
+
+    def atualizar(self):
+        self.y += self.vy
+        self.x += self.vx + math.sin(self.fase + self.y * 0.05) * 0.3
+        self.vida -= 0.009
+
+    def viva(self):
+        return self.vida > 0
+
+    def desenhar(self):
+        a = int(clamp(self.vida, 0, 1) * 255)
+        s = self.s
+        surf = pygame.Surface((s * 3, s * 4), pygame.SRCALPHA)
+        cor = (self.cor[0], self.cor[1], self.cor[2], a)
+        # dois "lóbulos" no topo
+        pygame.draw.rect(surf, cor, (0, 0, s, s))
+        pygame.draw.rect(surf, cor, (s * 2, 0, s, s))
+        # corpo
+        pygame.draw.rect(surf, cor, (0, s, s * 3, s))
+        pygame.draw.rect(surf, cor, (s // 2, s * 2, s * 2, s))
+        # ponta
+        pygame.draw.rect(surf, cor, (s, s * 3, s, s))
+        tela.blit(surf, (int(self.x), int(self.y)))
+
+
+def soltar_coracoes(x, y, n=1):
+    for _ in range(n):
+        G.coracoes.append(CoracaoFlutuante(x + random.uniform(-6, 6), y + random.uniform(-4, 4)))
+
+
+def desenharCoracoes():
+    for c in G.coracoes:
+        c.desenhar()
+
+
 listaPets = [
     Pet("Shitzu Branca", "cao", 320, 155, hx('#f5f5f5'), hx('#d9c3b0'), "auuu"),
     Pet("Cão Bege", "cao", 350, 165, hx('#e3cda6'), hx('#c0a373'), "auau"),
@@ -738,7 +796,7 @@ def inputs_para(cx, cy, mx=12, my=10):
 
 
 def _livre():
-    return not caixaDialogo.ativo and not G.transitando
+    return not caixaDialogo.ativo and not G.transitando and not G.pausado
 
 
 def podeConduzir():
@@ -942,6 +1000,9 @@ def resetarVariaveisCenas():
     G.somChegadaTocado = False
     G.somDingTocado = False
     G.luscaDialogoMostrado = False
+    G.pausado = False
+    G.coracoes = []
+    G.coracaoTimer = 0
     caixaDialogo.ativo = False
     for key in list(teclasPressionadas.keys()):
         teclasPressionadas[key] = False
@@ -964,6 +1025,12 @@ def gerenciarTransicao():
     if not G.transitando:
         return
     G.transicaoAlfa += G.direcaoTransicao * 0.04
+    # Fade suave da música acompanhando o escurecer/clarear da tela
+    if MUSICA_FUNDO_OK and not _musica_mutada and _musica_fundo_tocando:
+        try:
+            pygame.mixer.music.set_volume(_volume_musica * (1.0 - G.transicaoAlfa * 0.85))
+        except Exception:
+            pass
     if G.transicaoAlfa >= 1:
         G.transicaoAlfa = 1.0
         G.cenaAtual = G.proximaCena
@@ -1000,6 +1067,12 @@ def gerenciarTransicao():
     elif G.transicaoAlfa <= 0:
         G.transicaoAlfa = 0.0
         G.transitando = False
+        # Restaura o volume cheio ao terminar a transição
+        if MUSICA_FUNDO_OK and not _musica_mutada and _musica_fundo_tocando:
+            try:
+                pygame.mixer.music.set_volume(_volume_musica)
+            except Exception:
+                pass
 
 
 # ==============================================================================
@@ -1347,13 +1420,27 @@ def desenharOverlayCarta():
 
 
 # ==============================================================================
+# OVERLAY DE PAUSA
+# ==============================================================================
+def desenharOverlayPausa():
+    ov = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
+    ov.fill((10, 8, 22, 180))
+    tela.blit(ov, (0, 0))
+    pw, ph = 200, 96
+    px, py = (LARGURA - pw) // 2, (ALTURA - ph) // 2
+    pygame.draw.rect(tela, hx('#2a1c3a'), (px, py, pw, ph))
+    pygame.draw.rect(tela, hx('#caa074'), (px, py, pw, ph), 2)
+    texto(tela, "PAUSA  ♥", LARGURA // 2, py + 14, 18, hx('#ff88bb'), align='center', bold=True)
+    texto(tela, "P para continuar", LARGURA // 2, py + 44, 11, hx('#fcf5db'), align='center')
+    texto(tela, "M muta  |  + / - volume", LARGURA // 2, py + 62, 9, hx('#c9c9d6'), align='center')
+    texto(tela, "F11 tela cheia  |  R recomeça", LARGURA // 2, py + 76, 9, hx('#c9c9d6'), align='center')
+
+
+# ==============================================================================
 # ATUALIZAR
 # ==============================================================================
 def dist(ax, ay, bx, by):
     return math.hypot(ax - bx, ay - by)
-
-
-_intro_musica_on = False
 
 
 def atualizar():
@@ -1361,6 +1448,15 @@ def atualizar():
     gerenciarTransicao()
     caixaDialogo.atualizar()
     G.tempoCeu += 1.0
+
+    # Corações flutuantes (sempre, mesmo durante diálogo)
+    for c in G.coracoes:
+        c.atualizar()
+    G.coracoes = [c for c in G.coracoes if c.viva()]
+
+    if G.volumeMsgTimer > 0:
+        G.volumeMsgTimer -= 1
+
     if caixaDialogo.ativo:
         return
     G.tempoPasso += 0.2
@@ -1373,11 +1469,12 @@ def atualizar():
             _intro_musica_on = True
         return
 
-    # Parar música intro, iniciar música de fundo
-    if SONS_OK and _intro_musica_on:
-        SOM_INTRO.stop()
+    # Parar música intro, iniciar música de fundo (independente de SONS_OK)
+    if _intro_musica_on:
+        if SONS_OK:
+            SOM_INTRO.stop()
         _intro_musica_on = False
-        iniciar_musica_fundo()
+    iniciar_musica_fundo()  # a função já evita tocar duas vezes
 
     if G.cenaAtual == CENA_1_ESTRADA:
         if G.carroX >= LARGURA:
@@ -1393,6 +1490,8 @@ def atualizar():
                 G.homemAtivo = True
                 G.homemVisivel = True
                 G.homemComLanche = False
+                if SONS_OK:
+                    SOM_DING.play()
                 atualizarStatus("Cena 2: Caminha até à porta da lanchonete!")
         elif G.kikaoEstado == "descendo":
             if abs((G.homemX + 5) - 210) < 12 and (G.homemY + 25) <= 150:
@@ -1442,6 +1541,11 @@ def atualizar():
             perto = (dist(G.casalX + 5, G.casalY + 12, G.casaX + 90, G.casaY + 80) < 130)
             for pet in listaPets:
                 pet.atualizar(perto)
+            if perto:
+                G.coracaoTimer += 1
+                if G.coracaoTimer >= 16:
+                    G.coracaoTimer = 0
+                    soltar_coracoes(G.casalX + 6, G.casalY - 6, 1)
             if dist(G.casalX + 5, G.casalY + 25, G.casaX + 35, G.casaY + 68) < 16:
                 G.casalAtivo = False
                 iniciarTransicao(CENA_5_QUARTO)
@@ -1482,6 +1586,11 @@ def atualizar():
             G.introMostrada = True
         G.cliqueDisponivel = (G.notebookZoom >= 1.0 and G.introMostrada and not caixaDialogo.ativo)
         G.puloCliqueNotebook += 0.12
+        if G.cliqueDisponivel:
+            G.coracaoTimer += 1
+            if G.coracaoTimer >= 28:
+                G.coracaoTimer = 0
+                soltar_coracoes(random.randint(80, 320), 168, 1)
 
 
 # ==============================================================================
@@ -1569,6 +1678,7 @@ def desenhar():
         if G.casalAtivo:
             desenharMulherPixel(G.casalX, G.casalY, True)
             desenharHomemPixel(G.casalX - 12, G.casalY + 2, True)
+        desenharCoracoes()
 
     elif G.cenaAtual == CENA_5_QUARTO:
         desenharQuarto()
@@ -1647,6 +1757,8 @@ def desenhar():
             texto(tela, "Pressiona R para recomeçar", LARGURA / 2, ALTURA - 14, 9,
                   hx('#c9c9d6'), align='center')
 
+        desenharCoracoes()
+
         if G.mostrarCartinha:
             desenharOverlayCarta()
 
@@ -1658,7 +1770,17 @@ def desenhar():
         t_hud = "WASD/SETAS: conduz o teu carro" if podeConduzir() else "WASD/SETAS: move os personagens"
         texto(tela, t_hud, 12, 10, 10, hx('#ffffff'))
 
+    # Mensagem de volume/mute
+    if G.volumeMsgTimer > 0 and G.volumeMsg:
+        vm = pygame.Surface((118, 16), pygame.SRCALPHA)
+        vm.fill((20, 20, 20, 184))
+        tela.blit(vm, (LARGURA - 126, 8))
+        texto(tela, G.volumeMsg, LARGURA - 120, 10, 10, hx('#ffe9c2'), bold=True)
+
     caixaDialogo.desenhar()
+
+    if G.pausado:
+        desenharOverlayPausa()
 
     if G.transicaoAlfa > 0:
         fade = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
@@ -1669,6 +1791,60 @@ def desenhar():
     janela.fill((0, 0, 0))
     janela.blit(escalada, (int(shakeX * ESCALA), int(shakeY * ESCALA)))
     _render_fila_texto()
+
+
+# ==============================================================================
+# CONTROLES DE SOM / TELA
+# ==============================================================================
+def ajustar_volume(delta):
+    global _volume_musica
+    _volume_musica = clamp(_volume_musica + delta, 0.0, 1.0)
+    if MUSICA_FUNDO_OK and not _musica_mutada:
+        try:
+            pygame.mixer.music.set_volume(_volume_musica)
+        except Exception:
+            pass
+    G.volumeMsg = f"Volume: {int(_volume_musica * 100)}%"
+    G.volumeMsgTimer = 90
+
+
+def alternar_mute():
+    global _musica_mutada
+    _musica_mutada = not _musica_mutada
+    if MUSICA_FUNDO_OK:
+        try:
+            pygame.mixer.music.set_volume(0.0 if _musica_mutada else _volume_musica)
+        except Exception:
+            pass
+    G.volumeMsg = "Som: OFF" if _musica_mutada else "Som: ON"
+    G.volumeMsgTimer = 90
+
+
+def alternar_pausa():
+    if G.cenaAtual == CENA_INTRO:
+        return
+    G.pausado = not G.pausado
+    if MUSICA_FUNDO_OK and _musica_fundo_tocando:
+        try:
+            if G.pausado:
+                pygame.mixer.music.pause()
+            else:
+                pygame.mixer.music.unpause()
+        except Exception:
+            pass
+
+
+def alternar_tela_cheia():
+    global janela
+    G.telaCheia = not G.telaCheia
+    try:
+        if G.telaCheia:
+            janela = pygame.display.set_mode(
+                (LARGURA * ESCALA, ALTURA * ESCALA), pygame.FULLSCREEN | pygame.SCALED)
+        else:
+            janela = pygame.display.set_mode((LARGURA * ESCALA, ALTURA * ESCALA))
+    except Exception as e:
+        print(f"[Tela] Nao consegui alternar tela cheia: {e}")
 
 
 # ==============================================================================
@@ -1738,6 +1914,17 @@ def main():
                     teclasPressionadas[nome] = True
                 if ev.key == pygame.K_ESCAPE and G.mostrarCartinha:
                     G.mostrarCartinha = False
+                # Controles globais de som/tela
+                if ev.key == pygame.K_m:
+                    alternar_mute()
+                elif ev.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
+                    ajustar_volume(+0.1)
+                elif ev.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                    ajustar_volume(-0.1)
+                elif ev.key == pygame.K_F11:
+                    alternar_tela_cheia()
+                elif ev.key == pygame.K_p:
+                    alternar_pausa()
                 if ev.key == pygame.K_RETURN:
                     if G.mostrarCartinha:
                         G.mostrarCartinha = False
@@ -1756,7 +1943,9 @@ def main():
                 if nome:
                     teclasPressionadas[nome] = False
             elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
-                if G.cenaAtual == CENA_INTRO:
+                if G.pausado:
+                    pass
+                elif G.cenaAtual == CENA_INTRO:
                     tratarClique(ev.pos[0], ev.pos[1])
                 elif G.mostrarCartinha:
                     tratarClique(ev.pos[0], ev.pos[1])
@@ -1773,19 +1962,25 @@ def main():
             elif ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
                 G.toqueAtivo = False
 
-        atualizarMovimentoCarroJogador()
-        atualizarMovimentoHomem()
-        atualizarMovimentoCasalCena4()
-        atualizarMovimentoQuartoEntrando()
-        atualizarMovimentoMimiQuarto()
-        gerenciarObstaculosEColisoes()
-        atualizar()
+        if not G.pausado:
+            atualizarMovimentoCarroJogador()
+            atualizarMovimentoHomem()
+            atualizarMovimentoCasalCena4()
+            atualizarMovimentoQuartoEntrando()
+            atualizarMovimentoMimiQuarto()
+            gerenciarObstaculosEColisoes()
+            atualizar()
         desenhar()
         pygame.display.flip()
         clock.tick(FPS)
 
     parar_musica_fundo()
     pygame.quit()
+
+
+# Volume / mute globais (definidos antes do uso em runtime)
+_volume_musica = 0.40
+_musica_mutada = False
 
 
 if __name__ == "__main__":
