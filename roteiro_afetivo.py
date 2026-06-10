@@ -2,22 +2,27 @@
 """
 ROTEIRO AFETIVO - Uma aventura pixelizada acolhedora de carinho e código.
 
-Versão Python (pygame) convertida do jogo original em HTML5 Canvas.
+Versão Python (pygame).
 
 Como rodar (precisa de Python instalado):
     python roteiro_afetivo.py
     (o pygame é instalado automaticamente na primeira execução se faltar)
 
-Como gerar um executável que roda em qualquer PC SEM Python:
-    Windows:  duplo-clique em build_windows.bat
-    Mac/Linux: bash build_macos_linux.sh
-    (gera o executável na pasta 'dist/')
+Como gerar um executável para qualquer PC SEM Python:
+    Windows:  duplo-clique em build_windows.bat  (ou via GitHub Actions)
+    -> gera dist/RoteiroAfetivo.exe
+
+>>> SOBRE O VÍDEO DA ÚLTIMA CENA <<<
+Coloca o teu vídeo na MESMA PASTA do jogo (ao lado do .exe), de preferência
+chamado:  meu_video.mp4   (também aceita .mov .avi .mkv .webm .m4v, ou qualquer
+vídeo que estiver na pasta). Na última cena, clica no botão ▶ que o vídeo abre
+no teu leitor de vídeo do Windows.
 
 Controlos:
-    - Conduz/anda com as teclas WASD ou as setas.
-    - Ou clica e arrasta com o rato dentro do ecrã para guiar.
+    - WASD ou setas: move o carro / o casal / a Mimi (em TODAS as cenas).
+    - Clica e arrasta com o rato dentro do ecrã para guiar também.
     - ENTER ou clique avança os diálogos.
-    - R reinicia no fim da história.
+    - R reinicia.
 """
 
 import math
@@ -28,22 +33,14 @@ import subprocess
 
 
 def _garantir_pygame():
-    """Importa o pygame; se não estiver instalado, tenta instalar via pip.
-
-    Isto torna o ficheiro .py executável em qualquer PC com Python, mesmo
-    sem o pygame previamente instalado. Quando empacotado como .exe pelo
-    PyInstaller, o pygame já vai embutido e este bloco não faz nada.
-    """
+    """Importa o pygame; se faltar, tenta instalar via pip (modo .py)."""
     try:
         import pygame  # noqa: F401
         return
     except ImportError:
         pass
-
-    # Não tenta instalar quando já está congelado num executável.
     if getattr(sys, "frozen", False):
         raise SystemExit("pygame não encontrado no executável empacotado.")
-
     print("pygame não encontrado. A tentar instalar automaticamente...")
     try:
         subprocess.check_call([sys.executable, "-m", "pip", "install", "pygame"])
@@ -59,41 +56,88 @@ _garantir_pygame()
 import pygame
 
 
-def caminho_recurso(rel):
-    """Resolve caminhos de ficheiros tanto a correr como .py como empacotado.
-
-    Útil caso queiras juntar fontes/imagens no futuro. Não é necessário
-    para a versão atual (que não usa ficheiros externos).
-    """
-    base = getattr(sys, "_MEIPASS", os.path.abspath("."))
-    return os.path.join(base, rel)
-
 # ==============================================================================
-# CONFIGURAÇÃO DO ECRÃ VIRTUAL DE BAIXA RESOLUÇÃO (MODO PIXEL ART RETRO)
+# CONFIGURAÇÃO
 # ==============================================================================
 LARGURA = 400
 ALTURA = 300
-ESCALA = 2  # Janela final = 800 x 600
+ESCALA = 2          # Janela = 800 x 600
 FPS = 60
+
+VIDEO_EXTS = ('.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.wmv')
+VIDEO_PREFERIDOS = ('meu_video', 'video', 'nosso_video', 'mimi')
 
 
 def hx(s):
-    """Converte uma cor hexadecimal '#rrggbb' num tuplo RGB."""
     s = s.lstrip('#')
     return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16))
 
 
-# Paleta de Cores Cozy & Camponesa
-COR_ASFALTO = hx('#343f44')
+def lerp(a, b, t):
+    return a + (b - a) * t
+
+
+def lerp_cor(c1, c2, t):
+    return (int(lerp(c1[0], c2[0], t)), int(lerp(c1[1], c2[1], t)), int(lerp(c1[2], c2[2], t)))
+
+
+def clamp(v, lo, hi):
+    return lo if v < lo else hi if v > hi else v
+
+
+def pasta_base():
+    """Pasta onde está o jogo (ao lado do .exe quando empacotado)."""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def encontrar_video():
+    """Procura um ficheiro de vídeo na pasta do jogo."""
+    base = pasta_base()
+    try:
+        arquivos = os.listdir(base)
+    except OSError:
+        arquivos = []
+    for nome in VIDEO_PREFERIDOS:
+        for ext in VIDEO_EXTS:
+            p = os.path.join(base, nome + ext)
+            if os.path.exists(p):
+                return p
+    for f in sorted(arquivos):
+        if f.lower().endswith(VIDEO_EXTS):
+            return os.path.join(base, f)
+    return None
+
+
+def reproduzir_video():
+    """Abre o vídeo no leitor padrão do sistema."""
+    cam = encontrar_video()
+    if not cam:
+        G.videoMsg = "Coloca um video (.mp4) na pasta do jogo!"
+        G.videoExiste = False
+        return
+    G.videoExiste = True
+    try:
+        if sys.platform.startswith('win'):
+            os.startfile(cam)  # type: ignore[attr-defined]
+        elif sys.platform == 'darwin':
+            subprocess.Popen(['open', cam])
+        else:
+            subprocess.Popen(['xdg-open', cam])
+        G.videoMsg = "A reproduzir no teu leitor de video..."
+    except Exception:  # noqa: BLE001
+        G.videoMsg = "Nao consegui abrir o video."
+
+
+# Paleta
+COR_ASFALTO = hx('#3a4248')
 COR_GRAMA = hx('#4a7551')
-COR_CEU_DIA = hx('#8cb8d0')
-COR_CEU_NOITE = hx('#0c1020')
-COR_CEU_ENTARDECER = hx('#d36c3c')
 COR_CAIXA_DIALOGO = hx('#4e311f')
-COR_BORDA_DIALOGO = hx('#9e714b')
+COR_BORDA_DIALOGO = hx('#caa074')
 COR_TEXTO = hx('#fcf5db')
 
-# Constantes das Cenas
+# Cenas
 CENA_1_ESTRADA = 1
 CENA_2_KIKAO = 2
 CENA_3_VIAGEM = 3
@@ -103,30 +147,25 @@ CENA_6_PROGRAMACAO = 6
 
 
 # ==============================================================================
-# ESTADO GLOBAL DO JOGO
+# ESTADO GLOBAL
 # ==============================================================================
 class G:
-    """Contentor de estado mutável (equivalente às variáveis globais do JS)."""
     cenaAtual = CENA_1_ESTRADA
     transicaoAlfa = 0.0
     transitando = False
     direcaoTransicao = 1
     proximaCena = None
 
-    # Movimento do carro
     carroX = 10.0
     carroY = 185.0
-    carroVel = 1.8
     estradaOffset = 0.0
     velocidadeManual = 1.6
     VELOCIDADE_ALVO = 1.6
 
-    # Tráfego
     listaObstaculos = []
     timerGerarObstaculo = 0
     colidirTimer = 0
 
-    # Cena 2 (Kikão)
     homemX = 0.0
     homemY = 0.0
     homemAtivo = False
@@ -135,89 +174,97 @@ class G:
     dinerTimer = 0
     kikaoEstado = "conduzindo_para_parar"
 
-    # Cena 4 (Casa e animais)
     casaX = 220
     casaY = 60
     casalAtivo = False
     casalX = 0.0
     casalY = 0.0
-    casalVel = 0.8
-    casalChegouPortao = False
 
-    # Quarto e notebook
     camaX = 90
     camaY = 100
     mesaX = 260
     mesaY = 115
     quartoLuzAcesa = False
-    mulherQuartoX = 24.0
-    mulherQuartoY = 185.0
-    homemQuartoX = 14.0
-    homemQuartoY = 190.0
+    mulherQuartoX = 30.0
+    mulherQuartoY = 190.0
+    homemQuartoX = 16.0
+    homemQuartoY = 194.0
     quartoEstado = "entrando"
     quartoTimer = 0
     notebookAceso = False
+
+    # Cena 6 / vídeo
+    notebookZoom = 0.0
+    introMostrada = False
     cliqueDisponivel = False
     puloCliqueNotebook = 0.0
+    videoExiste = False
+    videoMsg = ""
+    playRect = None  # (cx, cy, raio) em coords virtuais
 
-    # Animação de caminhada
     tempoPasso = 0.0
+    tempoCeu = 0.0
 
-    # Toque / arrasto
     toqueAtivo = False
     toqueDestinoX = 0.0
     toqueDestinoY = 0.0
 
-    # Texto de status (HUD)
     statusCena = "Cena 1: A Viagem Começa..."
 
 
-rectNotebookTela = {'x': G.mesaX + 18, 'y': G.mesaY + 6, 'width': 12, 'height': 9}
-
-# Registo de teclas pressionadas (nomes em minúsculas: 'w','a','s','d','arrowup'...)
 teclasPressionadas = {}
 
 
 # ==============================================================================
-# INICIALIZAÇÃO DO PYGAME
+# PYGAME
 # ==============================================================================
 pygame.init()
 janela = pygame.display.set_mode((LARGURA * ESCALA, ALTURA * ESCALA))
 pygame.display.set_caption("Roteiro Afetivo - Um Jogo de Amor e Código")
 clock = pygame.time.Clock()
-
-# Superfície virtual onde tudo é desenhado em 400x300 antes do scaling
 tela = pygame.Surface((LARGURA, ALTURA))
 
-# Fontes (substituem 'Press Start 2P' e 'VT323')
 FONT_CACHE = {}
+_fila_texto = []
 
 
 def fonte(tam, bold=False):
     chave = (tam, bold)
     if chave not in FONT_CACHE:
-        FONT_CACHE[chave] = pygame.font.SysFont("couriernew,consolas,monospace", tam, bold=bold)
+        # Fonte suave (não pixelizada), com fallback amplo
+        FONT_CACHE[chave] = pygame.font.SysFont(
+            "segoeui,verdana,arial,dejavusans,freesans", tam, bold=bold)
     return FONT_CACHE[chave]
 
 
-def texto(surf, txt, x, y, tam, cor, align='left', bold=False):
-    """Desenha texto. align: 'left' | 'center' | 'right'."""
-    img = fonte(tam, bold).render(txt, True, cor)
-    r = img.get_rect()
-    if align == 'center':
-        r.midtop = (int(x), int(y))
-    elif align == 'right':
-        r.topright = (int(x), int(y))
-    else:
-        r.topleft = (int(x), int(y))
-    surf.blit(img, r)
+def texto(_surf, txt, x, y, tam, cor, align='left', bold=False):
+    """Enfileira texto para ser desenhado em alta resolução (suave)."""
+    _fila_texto.append((str(txt), float(x), float(y), int(tam), cor, align, bold))
 
 
-def linha_tracejada(surf, cor, x1, y, x2, dash=10, gap=10, espessura=1):
-    """Desenha uma linha horizontal tracejada."""
+def medir_texto(txt, tam, bold=False):
+    return fonte(int(tam * ESCALA), bold).size(str(txt))[0] / ESCALA
+
+
+def _render_fila_texto():
+    for (t, x, y, tam, cor, align, bold) in _fila_texto:
+        f = fonte(int(tam * ESCALA), bold)
+        img = f.render(t, True, cor)
+        r = img.get_rect()
+        wx, wy = x * ESCALA, y * ESCALA
+        if align == 'center':
+            r.midtop = (int(wx), int(wy))
+        elif align == 'right':
+            r.topright = (int(wx), int(wy))
+        else:
+            r.topleft = (int(wx), int(wy))
+        janela.blit(img, r)
+
+
+def linha_tracejada(surf, cor, x1, y, x2, dash=10, gap=10, esp=1):
     x = x1
     while x < x2:
-        pygame.draw.line(surf, cor, (x, y), (min(x + dash, x2), y), espessura)
+        pygame.draw.line(surf, cor, (x, y), (min(x + dash, x2), y), esp)
         x += dash + gap
 
 
@@ -239,23 +286,22 @@ class Obstaculo:
 
     def desenhar(self):
         x, y = self.x, self.y
-        # Sombra
         pygame.draw.rect(tela, (15, 25, 15), (x + 1, y + self.altura - 2, self.largura - 2, 2))
         if self.tipo == 'carro':
             pygame.draw.rect(tela, self.cor, (x, y + 4, self.largura, self.altura - 4))
             pygame.draw.rect(tela, hx('#90afc5'), (x + 5, y, self.largura - 10, 5))
             pygame.draw.rect(tela, hx('#141416'), (x + 4, y + self.altura - 2, 5, 2))
             pygame.draw.rect(tela, hx('#141416'), (x + self.largura - 9, y + self.altura - 2, 5, 2))
-            cor_farol = hx('#fff4a3') if self.velocidade < 0 else hx('#ff3333')
-            pygame.draw.rect(tela, cor_farol, (x, y + 6, 1, 2))
+            cf = hx('#fff4a3') if self.velocidade < 0 else hx('#ff3333')
+            pygame.draw.rect(tela, cf, (x, y + 6, 1, 2))
         else:
             pygame.draw.rect(tela, self.cor, (x + 3, y + 2, self.largura - 6, self.altura - 4))
             pygame.draw.rect(tela, hx('#141416'), (x, y + self.altura - 2, 3, 2))
             pygame.draw.rect(tela, hx('#141416'), (x + self.largura - 3, y + self.altura - 2, 3, 2))
             pygame.draw.rect(tela, hx('#222222'), (x + 6, y, 5, 4))
-            cor_farol = hx('#fff4a3') if self.velocidade < 0 else hx('#ff3333')
+            cf = hx('#fff4a3') if self.velocidade < 0 else hx('#ff3333')
             fx = x if self.velocidade < 0 else x + self.largura - 1
-            pygame.draw.rect(tela, cor_farol, (fx, y + 3, 1, 1))
+            pygame.draw.rect(tela, cf, (fx, y + 3, 1, 1))
 
 
 class Pet:
@@ -269,31 +315,25 @@ class Pet:
         self.corOrelhas = corOrelhas if corOrelhas else cor
         self.fala = fala
         self.anguloBalanco = 0.0
-        self.puloOffset = 0.0
         self.feliz = False
 
-    def atualizar(self, casalProximo):
-        self.feliz = casalProximo
+    def atualizar(self, perto):
+        self.feliz = perto
         if self.feliz:
             self.anguloBalanco += 0.4
-            self.puloOffset = abs(math.sin(self.anguloBalanco) * 7)
+            off = abs(math.sin(self.anguloBalanco) * 7)
         else:
             self.anguloBalanco += 0.05
-            self.puloOffset = abs(math.sin(self.anguloBalanco) * 1.5)
-        self.y = self.baseY - self.puloOffset
+            off = abs(math.sin(self.anguloBalanco) * 1.5)
+        self.y = self.baseY - off
 
     def desenhar(self):
         x, y = self.x, self.y
-        # Sombra
         pygame.draw.rect(tela, (15, 25, 15), (x + 1, self.baseY + 11, 10, 2))
-        # Corpo
         pygame.draw.rect(tela, self.cor, (x + 1, y + 5, 10, 7))
-        # Cabeça
         pygame.draw.rect(tela, self.cor, (x + 2, y + 1, 8, 5))
-        # Olhos
         pygame.draw.rect(tela, hx('#0f0f0f'), (x + 3, y + 2, 1, 1))
         pygame.draw.rect(tela, hx('#0f0f0f'), (x + 7, y + 2, 1, 1))
-        # Nariz e orelhas
         if self.tipo == 'gato':
             pygame.draw.rect(tela, hx('#e8a3a3'), (x + 5, y + 3, 1, 1))
             pygame.draw.rect(tela, self.corOrelhas, (x + 2, y, 1, 1))
@@ -303,34 +343,25 @@ class Pet:
             pygame.draw.rect(tela, self.corOrelhas, (x + 1, y + 2, 1, 3))
             pygame.draw.rect(tela, self.corOrelhas, (x + 9, y + 2, 1, 3))
 
-        # Balão de fala
         if self.feliz and self.fala:
-            f = fonte(7, bold=True)
-            img = f.render(self.fala, True, hx('#000000'))
-            largTexto = img.get_width()
+            largTexto = medir_texto(self.fala, 6, True)
             bw = largTexto + 6
-            bh = 10
-            bx = int(x + 6 - bw / 2)
-            by = int(y - 14)
-            # Sombra
+            bh = 11
+            bx = x + 6 - bw / 2
+            by = y - 15
             pygame.draw.rect(tela, (0, 0, 0), (bx + 1, by + 1, bw, bh))
-            # Corpo branco
             pygame.draw.rect(tela, hx('#ffffff'), (bx, by, bw, bh))
             pygame.draw.rect(tela, hx('#000000'), (bx, by, bw, bh), 1)
-            # Ponta do balão
             pts = [(x + 4, by + bh), (x + 6, by + bh + 3), (x + 8, by + bh)]
             pygame.draw.polygon(tela, hx('#ffffff'), pts)
             pygame.draw.lines(tela, hx('#000000'), False, pts, 1)
-            # Texto
-            tr = img.get_rect()
-            tr.midtop = (int(x + 6), by + 1)
-            tela.blit(img, tr)
+            texto(tela, self.fala, x + 6, by + 1, 6, (0, 0, 0), align='center', bold=True)
 
 
-# Criar os 5 animais de estimação
+# Pets: o cão BEGE é quem fala "auau" (item 6).
 listaPets = [
     Pet("Shitzu Branca", "cao", 320, 155, hx('#f5f5f5'), hx('#d9c3b0'), "auuu"),
-    Pet("Yorkshire", "cao", 350, 165, hx('#534438'), hx('#c68a4c'), "auau"),
+    Pet("Cão Bege", "cao", 350, 165, hx('#e3cda6'), hx('#c0a373'), "auau"),
     Pet("Shitzu Marrom", "cao", 310, 160, hx('#915f3c'), hx('#4a2f1c'), ""),
     Pet("Gato Tricolor", "gato", 340, 132, hx('#dc8c50'), hx('#222222'), ""),
     Pet("Gato Laranja", "gato", 375, 142, hx('#e66e1e'), hx('#f39c12'), "miau"),
@@ -343,7 +374,7 @@ class CaixaDialogo:
         self.textoAtual = ""
         self.ativo = False
         self.indiceLetra = 0.0
-        self.velocidadeEscrita = 0.4
+        self.velocidadeEscrita = 0.5
         self.tempoCursor = 0
 
     def iniciar(self, txt):
@@ -367,38 +398,63 @@ class CaixaDialogo:
         pygame.draw.rect(tela, COR_BORDA_DIALOGO, (20, 220, 360, 70), 3)
         pygame.draw.rect(tela, hx('#2b1b11'), (23, 223, 354, 64), 1)
 
-        f = fonte(13)
-        # Quebra de linha por largura (limite ~330px)
         palavras = self.textoAtual.split(' ')
-        linhas = []
-        atual = ""
+        linhas, atual = [], ""
         for palavra in palavras:
             teste = atual + palavra + " "
-            if f.size(teste)[0] < 330:
+            if medir_texto(teste, 13) < 330:
                 atual = teste
             else:
                 linhas.append(atual)
                 atual = palavra + " "
         linhas.append(atual)
-
-        yOff = 232
+        yOff = 230
         for linha in linhas:
             texto(tela, linha, 35, yOff, 13, COR_TEXTO)
-            yOff += 16
-
+            yOff += 17
         if self.indiceLetra >= len(self.textoCompleto):
             if (self.tempoCursor // 20) % 2 == 0:
-                texto(tela, "v", 363, 272, 11, COR_BORDA_DIALOGO)
+                texto(tela, "▼", 360, 270, 12, COR_BORDA_DIALOGO)
 
 
 caixaDialogo = CaixaDialogo()
 
 
 # ==============================================================================
-# LÓGICA DE CONTROLO
+# CONTROLO
 # ==============================================================================
+def k(*nomes):
+    return any(teclasPressionadas.get(n, False) for n in nomes)
+
+
+def inputs_para(cx, cy, mx=12, my=10):
+    """Direções a partir de teclas + arrasto do rato em direção a (cx, cy)."""
+    direita = k('d', 'arrowright')
+    esquerda = k('a', 'arrowleft')
+    cima = k('w', 'arrowup')
+    baixo = k('s', 'arrowdown')
+    if G.toqueAtivo:
+        dx = G.toqueDestinoX - cx
+        dy = G.toqueDestinoY - cy
+        if abs(dx) > mx:
+            if dx > 0:
+                direita = True
+            else:
+                esquerda = True
+        if abs(dy) > my:
+            if dy > 0:
+                baixo = True
+            else:
+                cima = True
+    return direita, esquerda, cima, baixo
+
+
+def _livre():
+    return not caixaDialogo.ativo and not G.transitando
+
+
 def podeConduzir():
-    if caixaDialogo.ativo or G.transitando:
+    if not _livre():
         return False
     if G.cenaAtual == CENA_1_ESTRADA:
         return True
@@ -412,138 +468,158 @@ def podeConduzir():
 
 
 def podeMoverHomem():
-    if caixaDialogo.ativo or G.transitando:
-        return False
-    return G.cenaAtual == CENA_2_KIKAO and G.kikaoEstado in ("descendo", "voltando")
+    return _livre() and G.cenaAtual == CENA_2_KIKAO and G.kikaoEstado in ("descendo", "voltando")
+
+
+def podeMoverCasalCena4():
+    return _livre() and G.cenaAtual == CENA_4_CHEGADA_CASA and G.kikaoEstado == "casal_controlado"
+
+
+def podeMoverQuartoEntrando():
+    return _livre() and G.cenaAtual == CENA_5_QUARTO and G.quartoEstado == "entrando"
+
+
+def podeMoverMimiQuarto():
+    return _livre() and G.cenaAtual == CENA_5_QUARTO and G.quartoEstado == "andando"
+
+
+def controlandoPersonagem():
+    return (podeConduzir() or podeMoverHomem() or podeMoverCasalCena4() or
+            podeMoverQuartoEntrando() or podeMoverMimiQuarto())
 
 
 def obterHitboxCarro():
     return {'x': G.carroX + 4, 'y': G.carroY + 8, 'l': 40, 'a': 11}
 
 
-def k(*nomes):
-    """True se alguma das teclas dadas está pressionada."""
-    return any(teclasPressionadas.get(n, False) for n in nomes)
-
-
 def atualizarMovimentoCarroJogador():
     if not podeConduzir():
         return
-    acelerando = k('d', 'arrowright')
-    travando = k('a', 'arrowleft')
-    subindo = k('w', 'arrowup')
-    descendo = k('s', 'arrowdown')
-
-    if G.toqueAtivo:
-        dx = G.toqueDestinoX - (G.carroX + 24)
-        dy = G.toqueDestinoY - (G.carroY + 10)
-        if abs(dx) > 15:
-            acelerando = acelerando or dx > 0
-            travando = travando or dx <= 0
-        if abs(dy) > 10:
-            descendo = descendo or dy > 0
-            subindo = subindo or dy <= 0
-
-    if acelerando:
+    d, e, c, b = inputs_para(G.carroX + 24, G.carroY + 10, 15, 10)
+    if d:
         G.carroX += G.velocidadeManual
         if G.cenaAtual in (CENA_1_ESTRADA, CENA_3_VIAGEM):
             G.estradaOffset -= G.velocidadeManual
-    elif travando:
+    elif e:
         G.carroX -= G.velocidadeManual
         if G.carroX < -60:
             G.carroX = -60
         if G.cenaAtual in (CENA_1_ESTRADA, CENA_3_VIAGEM):
             G.estradaOffset += G.velocidadeManual
-
-    if subindo:
-        G.carroY -= 1.3
-        if G.carroY < 170:
-            G.carroY = 170
-    elif descendo:
-        G.carroY += 1.3
-        if G.carroY > 205:
-            G.carroY = 205
+    if c:
+        G.carroY = max(170, G.carroY - 1.3)
+    elif b:
+        G.carroY = min(205, G.carroY + 1.3)
 
 
 def atualizarMovimentoHomem():
     if not podeMoverHomem():
         return
-    acelerando = k('d', 'arrowright')
-    travando = k('a', 'arrowleft')
-    subindo = k('w', 'arrowup')
-    descendo = k('s', 'arrowdown')
+    d, e, c, b = inputs_para(G.homemX + 5, G.homemY + 12)
+    v = 1.0
+    if d:
+        G.homemX += v
+    if e:
+        G.homemX -= v
+    if c:
+        G.homemY -= v
+    if b:
+        G.homemY += v
+    G.homemX = clamp(G.homemX, 10, LARGURA - 20)
+    G.homemY = clamp(G.homemY, 120, 210)
 
-    if G.toqueAtivo:
-        dx = G.toqueDestinoX - (G.homemX + 5)
-        dy = G.toqueDestinoY - (G.homemY + 12)
-        if abs(dx) > 10:
-            acelerando = acelerando or dx > 0
-            travando = travando or dx <= 0
-        if abs(dy) > 10:
-            descendo = descendo or dy > 0
-            subindo = subindo or dy <= 0
 
-    velAndar = 1.0
-    if acelerando:
-        G.homemX += velAndar
-    if travando:
-        G.homemX -= velAndar
-    if subindo:
-        G.homemY -= velAndar
-    if descendo:
-        G.homemY += velAndar
+def atualizarMovimentoCasalCena4():
+    if not podeMoverCasalCena4():
+        return
+    d, e, c, b = inputs_para(G.casalX + 5, G.casalY + 12)
+    v = 1.2
+    if d:
+        G.casalX += v
+    if e:
+        G.casalX -= v
+    if c:
+        G.casalY -= v
+    if b:
+        G.casalY += v
+    G.casalX = clamp(G.casalX, 5, LARGURA - 15)
+    G.casalY = clamp(G.casalY, 95, 200)
 
-    G.homemX = max(10, min(LARGURA - 20, G.homemX))
-    G.homemY = max(120, min(210, G.homemY))
+
+def atualizarMovimentoQuartoEntrando():
+    if not podeMoverQuartoEntrando():
+        return
+    d, e, c, b = inputs_para(G.mulherQuartoX + 5, G.mulherQuartoY + 12)
+    v = 1.0
+    if d:
+        G.mulherQuartoX += v
+    if e:
+        G.mulherQuartoX -= v
+    if c:
+        G.mulherQuartoY -= v
+    if b:
+        G.mulherQuartoY += v
+    G.mulherQuartoX = clamp(G.mulherQuartoX, 12, LARGURA - 20)
+    G.mulherQuartoY = clamp(G.mulherQuartoY, 130, 205)
+    # O homem caminha junto, ligeiramente atrás
+    G.homemQuartoX = clamp(G.mulherQuartoX - 13, 6, LARGURA - 20)
+    G.homemQuartoY = clamp(G.mulherQuartoY + 4, 130, 205)
+
+
+def atualizarMovimentoMimiQuarto():
+    if not podeMoverMimiQuarto():
+        return
+    d, e, c, b = inputs_para(G.mulherQuartoX + 5, G.mulherQuartoY + 12)
+    v = 1.0
+    if d:
+        G.mulherQuartoX += v
+    if e:
+        G.mulherQuartoX -= v
+    if c:
+        G.mulherQuartoY -= v
+    if b:
+        G.mulherQuartoY += v
+    G.mulherQuartoX = clamp(G.mulherQuartoX, 12, LARGURA - 20)
+    G.mulherQuartoY = clamp(G.mulherQuartoY, 130, 205)
 
 
 def gerenciarObstaculosEColisoes():
     if not podeConduzir() or G.cenaAtual == CENA_4_CHEGADA_CASA:
         G.listaObstaculos = []
         return
-
     G.timerGerarObstaculo += 1
-    taxaGeracao = 35 if G.cenaAtual == CENA_3_VIAGEM else 55
-
-    if G.timerGerarObstaculo >= taxaGeracao:
+    taxa = 35 if G.cenaAtual == CENA_3_VIAGEM else 55
+    if G.timerGerarObstaculo >= taxa:
         G.timerGerarObstaculo = 0
         tipo = 'carro' if random.random() > 0.4 else 'moto'
         spawnY = 172 if random.random() > 0.5 else 200
         vemDeFrente = random.random() > 0.35
-        velObstaculo = -3.8 if vemDeFrente else 0.8
+        vel = -3.8 if vemDeFrente else 0.8
         if tipo == 'carro':
             col = hx('#2980b9') if random.random() > 0.5 else hx('#27ae60')
         else:
             col = hx('#f1c40f') if random.random() > 0.5 else hx('#e67e22')
-        G.listaObstaculos.append(Obstaculo(tipo, LARGURA + 30, spawnY, velObstaculo, col))
+        G.listaObstaculos.append(Obstaculo(tipo, LARGURA + 30, spawnY, vel, col))
 
-    velRefJogador = G.velocidadeManual if (k('d', 'arrowright') or
-                                           (G.toqueAtivo and G.toqueDestinoX > G.carroX + 24)) else 0
+    velRef = G.velocidadeManual if (k('d', 'arrowright') or
+                                    (G.toqueAtivo and G.toqueDestinoX > G.carroX + 24)) else 0
     for obs in G.listaObstaculos:
-        obs.atualizar(velRefJogador)
-
+        obs.atualizar(velRef)
     G.listaObstaculos = [o for o in G.listaObstaculos if -50 < o.x < LARGURA + 100]
 
     if G.velocidadeManual < G.VELOCIDADE_ALVO:
-        G.velocidadeManual += 0.04
-        if G.velocidadeManual > G.VELOCIDADE_ALVO:
-            G.velocidadeManual = G.VELOCIDADE_ALVO
-
+        G.velocidadeManual = min(G.VELOCIDADE_ALVO, G.velocidadeManual + 0.04)
     if G.colidirTimer > 0:
         G.colidirTimer -= 1
 
     if G.colidirTimer == 0:
         hb = obterHitboxCarro()
         for obs in G.listaObstaculos:
-            if (hb['x'] < obs.x + obs.largura and
-                    hb['x'] + hb['l'] > obs.x and
-                    hb['y'] < obs.y + obs.altura and
-                    hb['y'] + hb['a'] > obs.y):
+            if (hb['x'] < obs.x + obs.largura and hb['x'] + hb['l'] > obs.x and
+                    hb['y'] < obs.y + obs.altura and hb['y'] + hb['a'] > obs.y):
                 G.colidirTimer = 50
                 G.velocidadeManual = 0.4
-                G.carroX -= 15
-                if G.carroX < -60:
-                    G.carroX = -60
+                G.carroX = max(-60, G.carroX - 15)
                 G.listaObstaculos.remove(obs)
                 break
 
@@ -551,7 +627,6 @@ def gerenciarObstaculosEColisoes():
 def resetarVariaveisCenas():
     G.carroX = 10.0
     G.carroY = 185.0
-    G.carroVel = 1.8
     G.estradaOffset = 0.0
     G.velocidadeManual = G.VELOCIDADE_ALVO
     G.listaObstaculos = []
@@ -567,18 +642,23 @@ def resetarVariaveisCenas():
     G.casalAtivo = False
     G.casalX = 0.0
     G.casalY = 0.0
-    G.casalChegouPortao = False
     G.quartoLuzAcesa = False
-    G.mulherQuartoX = 24.0
-    G.mulherQuartoY = 185.0
-    G.homemQuartoX = 14.0
-    G.homemQuartoY = 190.0
+    G.mulherQuartoX = 30.0
+    G.mulherQuartoY = 190.0
+    G.homemQuartoX = 16.0
+    G.homemQuartoY = 194.0
     G.quartoEstado = "entrando"
     G.quartoTimer = 0
     G.notebookAceso = False
+    G.notebookZoom = 0.0
+    G.introMostrada = False
     G.cliqueDisponivel = False
+    G.puloCliqueNotebook = 0.0
+    G.videoMsg = ""
+    G.playRect = None
     G.tempoPasso = 0.0
     G.toqueAtivo = False
+    caixaDialogo.ativo = False
     for key in list(teclasPressionadas.keys()):
         teclasPressionadas[key] = False
 
@@ -588,6 +668,10 @@ def iniciarTransicao(proxima):
         G.transitando = True
         G.direcaoTransicao = 1
         G.proximaCena = proxima
+
+
+def atualizarStatus(t):
+    G.statusCena = t
 
 
 def gerenciarTransicao():
@@ -601,24 +685,28 @@ def gerenciarTransicao():
         if G.cenaAtual == CENA_2_KIKAO:
             G.carroX = -50
             G.kikaoEstado = "conduzindo_para_parar"
-            G.statusCena = "Cena 2: Estaciona o carro na vaga amarela!"
+            atualizarStatus("Cena 2: Estaciona o carro na vaga amarela!")
         elif G.cenaAtual == CENA_3_VIAGEM:
             G.carroX = -60
-            G.statusCena = "Cena 3: Desvia-te do tráfego rápido na autoestrada!"
+            atualizarStatus("Cena 3: Desvia-te do tráfego rápido!")
         elif G.cenaAtual == CENA_4_CHEGADA_CASA:
             G.carroX = -60
             G.kikaoEstado = "conduzindo_para_parar"
-            G.statusCena = "Cena 4: Conduz com carinho até casa..."
+            atualizarStatus("Cena 4: Conduz com carinho até casa...")
         elif G.cenaAtual == CENA_5_QUARTO:
             G.quartoTimer = 0
             G.quartoEstado = "entrando"
-            G.mulherQuartoX = 24.0
-            G.mulherQuartoY = 185.0
-            G.homemQuartoX = 14.0
-            G.homemQuartoY = 190.0
-            G.statusCena = "Cena 5: A entrar no quarto de mãos dadas..."
+            G.mulherQuartoX = 30.0
+            G.mulherQuartoY = 190.0
+            G.homemQuartoX = 16.0
+            G.homemQuartoY = 194.0
+            atualizarStatus("Cena 5: Leva o casal até a cama...")
         elif G.cenaAtual == CENA_6_PROGRAMACAO:
-            G.statusCena = "Cena 6: Linhas de carinho e código..."
+            G.notebookZoom = 0.0
+            G.introMostrada = False
+            G.cliqueDisponivel = False
+            G.videoExiste = encontrar_video() is not None
+            atualizarStatus("Cena 6: O nosso vídeo <3")
         G.direcaoTransicao = -1
     elif G.transicaoAlfa <= 0:
         G.transicaoAlfa = 0.0
@@ -626,43 +714,83 @@ def gerenciarTransicao():
 
 
 # ==============================================================================
-# DESENHOS DE CENÁRIO
+# CENÁRIO BONITO (vibe pixel art) - item 7
 # ==============================================================================
-def desenharRelvaComDetalhes():
-    tela.fill(COR_GRAMA, (0, 0, LARGURA, ALTURA))
-    cor = hx('#3f6745')
-    tufos = [(20, 30), (50, 70), (110, 20), (80, 110), (150, 50), (280, 40), (350, 80),
-             (310, 120), (220, 90), (40, 250), (180, 260), (290, 270), (370, 240), (90, 280)]
-    for tx, ty in tufos:
-        pygame.draw.rect(tela, cor, (tx, ty, 1, 2))
-        pygame.draw.rect(tela, cor, (tx + 1, ty + 1, 1, 1))
+def desenharCeu(c1, c2, y0, y1, bandas=18):
+    h = (y1 - y0) / bandas
+    for i in range(bandas):
+        t = i / (bandas - 1)
+        pygame.draw.rect(tela, lerp_cor(c1, c2, t), (0, int(y0 + i * h), LARGURA, int(h) + 1))
 
 
-def desenharArvoresPixelizadas():
-    arvores = [(40, 150), (90, 145), (360, 150), (380, 155)]
-    for ax, ay in arvores:
-        pygame.draw.rect(tela, hx('#3c2817'), (ax - 2, ay - 8, 4, 8))
-        pygame.draw.polygon(tela, hx('#224d30'), [(ax - 10, ay - 8), (ax, ay - 18), (ax + 10, ay - 8)])
-        pygame.draw.polygon(tela, hx('#295c3a'), [(ax - 8, ay - 14), (ax, ay - 24), (ax + 8, ay - 14)])
-        pygame.draw.polygon(tela, hx('#316b43'), [(ax - 5, ay - 20), (ax, ay - 29), (ax + 5, ay - 20)])
+def desenharNuvem(x, y, s=1.0, cor=(248, 250, 255)):
+    blocos = [(0, 4, 18, 6), (6, 0, 12, 6), (12, 3, 12, 6), (3, 8, 22, 4)]
+    for bx, by, bw, bh in blocos:
+        pygame.draw.rect(tela, cor, (x + bx * s, y + by * s, bw * s, bh * s))
 
 
+def desenharNuvensDeriva(bases, cor=(248, 250, 255)):
+    for bx, by, s in bases:
+        x = (bx + G.tempoCeu * 0.12) % (LARGURA + 60) - 30
+        # sombra suave
+        desenharNuvem(x, by + 2, s, (220, 228, 240))
+        desenharNuvem(x, by, s, cor)
+
+
+def desenharFlores(spots):
+    for fx, fy, cor in spots:
+        pygame.draw.rect(tela, cor, (fx, fy, 2, 2))
+        pygame.draw.rect(tela, hx('#ffd54a'), (fx, fy, 1, 1))
+        pygame.draw.rect(tela, hx('#2f5a36'), (fx, fy + 2, 1, 1))
+
+
+FLORES_CAMPO = [
+    (30, 110, hx('#e57ea0')), (70, 130, hx('#f0e36a')), (110, 100, hx('#e57ea0')),
+    (150, 138, hx('#c98be0')), (185, 105, hx('#f0e36a')), (250, 120, hx('#e57ea0')),
+    (300, 140, hx('#c98be0')), (40, 250, hx('#f0e36a')), (120, 270, hx('#e57ea0')),
+    (210, 258, hx('#c98be0')), (300, 272, hx('#f0e36a')), (360, 245, hx('#e57ea0')),
+]
+
+
+def desenharArvore(ax, ay):
+    pygame.draw.rect(tela, hx('#3c2817'), (ax - 2, ay - 8, 4, 8))
+    pygame.draw.polygon(tela, hx('#224d30'), [(ax - 10, ay - 8), (ax, ay - 18), (ax + 10, ay - 8)])
+    pygame.draw.polygon(tela, hx('#295c3a'), [(ax - 8, ay - 14), (ax, ay - 24), (ax + 8, ay - 14)])
+    pygame.draw.polygon(tela, hx('#316b43'), [(ax - 5, ay - 20), (ax, ay - 29), (ax + 5, ay - 20)])
+
+
+def desenharArvores():
+    for ax, ay in [(40, 150), (90, 145), (360, 150), (380, 155)]:
+        desenharArvore(ax, ay)
+
+
+def desenharEstrada(topo, altura, tracejada=True):
+    # asfalto + bermas claras
+    pygame.draw.rect(tela, COR_ASFALTO, (0, topo, LARGURA, altura))
+    pygame.draw.rect(tela, hx('#5b6066'), (0, topo, LARGURA, 2))
+    pygame.draw.rect(tela, hx('#5b6066'), (0, topo + altura - 2, LARGURA, 2))
+    meio = topo + altura // 2
+    if tracejada:
+        linha_tracejada(tela, hx('#f5c542'), 0, meio, LARGURA)
+    else:
+        pygame.draw.line(tela, hx('#f5c542'), (0, meio), (LARGURA, meio), 1)
+
+
+# ==============================================================================
+# PERSONAGENS / OBJETOS
+# ==============================================================================
 def desenharCarroPixel(x, y):
     flash = G.colidirTimer > 0 and (G.colidirTimer // 4) % 2 == 0
-    if flash:
-        sup = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
-        alvo = sup
-    else:
-        alvo = tela
+    alvo = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA) if flash else tela
 
-    # Sombra
     pygame.draw.rect(alvo, (15, 25, 15), (x + 2, y + 21, 44, 5))
-    # Chassi
-    pygame.draw.rect(alvo, hx('#b02a2a'), (x, y + 8, 48, 12))
-    pygame.draw.rect(alvo, hx('#6e1111'), (x, y + 19, 48, 1))
-    pygame.draw.rect(alvo, hx('#6e1111'), (x, y + 8, 1, 11))
+    # Chassi azul escuro quase preto (item 2)
+    pygame.draw.rect(alvo, hx('#1b2240'), (x, y + 8, 48, 12))
+    pygame.draw.rect(alvo, hx('#0c1024'), (x, y + 19, 48, 1))
+    pygame.draw.rect(alvo, hx('#0c1024'), (x, y + 8, 1, 11))
+    pygame.draw.rect(alvo, hx('#2c3a66'), (x + 1, y + 9, 47, 1))  # brilho topo
     # Cabine
-    pygame.draw.rect(alvo, hx('#99b3ca'), (x + 10, y, 26, 9))
+    pygame.draw.rect(alvo, hx('#9fb8d4'), (x + 10, y, 26, 9))
     pygame.draw.rect(alvo, hx('#ffffff'), (x + 13, y + 2, 4, 4))
     pygame.draw.rect(alvo, hx('#ffffff'), (x + 26, y + 2, 5, 4))
     # Rodas
@@ -674,7 +802,6 @@ def desenharCarroPixel(x, y):
     pygame.draw.rect(alvo, hx('#ff3333'), (x, y + 10, 1, 3))
     pygame.draw.rect(alvo, hx('#fff4a3'), (x + 47, y + 11, 1, 3))
 
-    # Cone de luz dianteiro (cenas 3 e 4)
     if G.cenaAtual in (CENA_3_VIAGEM, CENA_4_CHEGADA_CASA):
         cone = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
         pygame.draw.polygon(cone, (255, 244, 163, 70),
@@ -682,48 +809,50 @@ def desenharCarroPixel(x, y):
         alvo.blit(cone, (0, 0))
 
     if flash:
-        sup.set_alpha(90)  # ~0.35 de opacidade
-        tela.blit(sup, (0, 0))
+        alvo.set_alpha(90)
+        tela.blit(alvo, (0, 0))
 
-    # Alerta "OPS!" (sempre opaco)
     if G.colidirTimer > 20:
-        texto(tela, "OPS!", x + 24, y - 14, 9, hx('#e74c3c'), align='center', bold=True)
+        texto(tela, "OPS!", x + 24, y - 16, 10, hx('#e74c3c'), align='center', bold=True)
 
 
 def desenharHomemPixel(x, y, bobbing=False):
-    bobY = math.floor(math.sin(G.tempoPasso * 0.8) * 1.5) if bobbing else 0
+    b = math.floor(math.sin(G.tempoPasso * 0.8) * 1.5) if bobbing else 0
     pygame.draw.rect(tela, (15, 25, 15), (x + 1, y + 25, 10, 2))
-    pygame.draw.rect(tela, hx('#1f2d3d'), (x + 2, y + 18 + bobY, 3, 8 - bobY))
-    pygame.draw.rect(tela, hx('#1f2d3d'), (x + 7, y + 18 + bobY, 3, 8 - bobY))
-    pygame.draw.rect(tela, hx('#225d87'), (x + 1, y + 10 + bobY, 10, 9))
-    pygame.draw.rect(tela, hx('#174363'), (x + 3, y + 9 + bobY, 6, 2))
-    pygame.draw.rect(tela, hx('#f9cba0'), (x + 2, y + 3 + bobY, 8, 7))
-    pygame.draw.rect(tela, hx('#4f2c15'), (x + 1, y + 1 + bobY, 10, 3))
-    pygame.draw.rect(tela, hx('#4f2c15'), (x + 1, y + 3 + bobY, 2, 3))
-    pygame.draw.rect(tela, hx('#4f2c15'), (x + 9, y + 3 + bobY, 2, 2))
-    pygame.draw.rect(tela, hx('#111111'), (x + 4, y + 5 + bobY, 1, 1))
-    pygame.draw.rect(tela, hx('#111111'), (x + 7, y + 5 + bobY, 1, 1))
+    pygame.draw.rect(tela, hx('#1f2d3d'), (x + 2, y + 18 + b, 3, 8 - b))
+    pygame.draw.rect(tela, hx('#1f2d3d'), (x + 7, y + 18 + b, 3, 8 - b))
+    pygame.draw.rect(tela, hx('#225d87'), (x + 1, y + 10 + b, 10, 9))
+    pygame.draw.rect(tela, hx('#174363'), (x + 3, y + 9 + b, 6, 2))
+    pygame.draw.rect(tela, hx('#f9cba0'), (x + 2, y + 3 + b, 8, 7))
+    pygame.draw.rect(tela, hx('#4f2c15'), (x + 1, y + 1 + b, 10, 3))
+    pygame.draw.rect(tela, hx('#4f2c15'), (x + 1, y + 3 + b, 2, 3))
+    pygame.draw.rect(tela, hx('#4f2c15'), (x + 9, y + 3 + b, 2, 2))
+    pygame.draw.rect(tela, hx('#111111'), (x + 4, y + 5 + b, 1, 1))
+    pygame.draw.rect(tela, hx('#111111'), (x + 7, y + 5 + b, 1, 1))
 
 
 def desenharMulherPixel(x, y, bobbing=False):
-    bobY = math.floor(math.sin(G.tempoPasso * 0.8) * 1.5) if bobbing else 0
+    b = math.floor(math.sin(G.tempoPasso * 0.8) * 1.5) if bobbing else 0
     pygame.draw.rect(tela, (15, 25, 15), (x + 1, y + 25, 10, 2))
-    pygame.draw.rect(tela, hx('#261b2e'), (x + 2, y + 18 + bobY, 3, 8 - bobY))
-    pygame.draw.rect(tela, hx('#261b2e'), (x + 7, y + 18 + bobY, 3, 8 - bobY))
-    pygame.draw.rect(tela, hx('#b33c70'), (x + 1, y + 10 + bobY, 10, 9))
-    pygame.draw.rect(tela, hx('#f9cba0'), (x + 2, y + 3 + bobY, 8, 7))
-    pygame.draw.rect(tela, hx('#e8c851'), (x + 1, y + 1 + bobY, 10, 3))
-    pygame.draw.rect(tela, hx('#e8c851'), (x + 1, y + 4 + bobY, 2, 7))
-    pygame.draw.rect(tela, hx('#e8c851'), (x + 9, y + 4 + bobY, 2, 7))
-    pygame.draw.rect(tela, hx('#111111'), (x + 4, y + 5 + bobY, 1, 1))
-    pygame.draw.rect(tela, hx('#111111'), (x + 7, y + 5 + bobY, 1, 1))
+    pygame.draw.rect(tela, hx('#261b2e'), (x + 2, y + 18 + b, 3, 8 - b))
+    pygame.draw.rect(tela, hx('#261b2e'), (x + 7, y + 18 + b, 3, 8 - b))
+    pygame.draw.rect(tela, hx('#b33c70'), (x + 1, y + 10 + b, 10, 9))
+    pygame.draw.rect(tela, hx('#f9cba0'), (x + 2, y + 3 + b, 8, 7))
+    pygame.draw.rect(tela, hx('#e8c851'), (x + 1, y + 1 + b, 10, 3))
+    pygame.draw.rect(tela, hx('#e8c851'), (x + 1, y + 4 + b, 2, 7))
+    pygame.draw.rect(tela, hx('#e8c851'), (x + 9, y + 4 + b, 2, 7))
+    pygame.draw.rect(tela, hx('#111111'), (x + 4, y + 5 + b, 1, 1))
+    pygame.draw.rect(tela, hx('#111111'), (x + 7, y + 5 + b, 1, 1))
 
 
-def desenharLanchoneteKikaoPixel():
+def desenharLanchonete():
     pygame.draw.rect(tela, hx('#d97d26'), (150, 75, 120, 75))
     pygame.draw.rect(tela, hx('#9e5311'), (150, 149, 120, 1))
     pygame.draw.rect(tela, hx('#a82c2c'), (140, 65, 140, 11))
     pygame.draw.rect(tela, hx('#cc3b3b'), (140, 63, 140, 2))
+    # toldo listrado
+    for i in range(0, 140, 16):
+        pygame.draw.rect(tela, hx('#f2efe6'), (140 + i, 65, 8, 11))
     pygame.draw.rect(tela, hx('#422712'), (200, 120, 20, 30))
     pygame.draw.rect(tela, hx('#ffd700'), (216, 134, 1, 2))
     pygame.draw.rect(tela, hx('#519bb3'), (160, 95, 25, 20))
@@ -734,88 +863,136 @@ def desenharLanchoneteKikaoPixel():
     pygame.draw.rect(tela, hx('#422712'), (235, 95, 25, 20), 1)
     pygame.draw.rect(tela, hx('#ffd700'), (170, 40, 80, 20))
     pygame.draw.rect(tela, hx('#2b1c11'), (170, 40, 80, 20), 2)
-    texto(tela, "KIKAO", 210, 44, 10, hx('#a82c2c'), align='center', bold=True)
+    texto(tela, "KIKÃO", 210, 43, 11, hx('#a82c2c'), align='center', bold=True)
 
 
-def desenharCasaPortaoPixel():
+def desenharCasa():
     cx, cy = G.casaX, G.casaY
-    pygame.draw.rect(tela, hx('#c9ab81'), (cx, cy, 120, 80))
+    pygame.draw.rect(tela, hx('#d8bd92'), (cx, cy, 120, 80))
+    pygame.draw.rect(tela, hx('#c9ab81'), (cx, cy + 60, 120, 20))
     pygame.draw.polygon(tela, hx('#8f3333'), [(cx - 10, cy), (cx + 60, cy - 45), (cx + 130, cy)])
+    pygame.draw.polygon(tela, hx('#a14040'), [(cx - 10, cy), (cx + 60, cy - 45), (cx + 30, cy)])
     pygame.draw.rect(tela, hx('#a83e3e'), (cx - 10, cy - 1, 140, 2))
+    # porta
     pygame.draw.rect(tela, hx('#3d2514'), (cx + 25, cy + 45, 20, 35))
     pygame.draw.rect(tela, hx('#fce588'), (cx + 41, cy + 62, 1, 2))
+    # janela
     pygame.draw.rect(tela, hx('#fce588'), (cx + 75, cy + 25, 25, 20))
     pygame.draw.rect(tela, hx('#3d2514'), (cx + 75, cy + 25, 25, 20), 1)
     pygame.draw.rect(tela, hx('#3d2514'), (cx + 87, cy + 25, 1, 20))
     pygame.draw.rect(tela, hx('#3d2514'), (cx + 75, cy + 35, 25, 1))
+    # portão de grade
     pygame.draw.rect(tela, hx('#7a7671'), (cx + 120, cy + 40, 60, 40))
     gx = cx + 124
     while gx < LARGURA:
         pygame.draw.line(tela, hx('#3d3f42'), (gx, cy + 30), (gx, cy + 80), 1)
         gx += 8
     pygame.draw.line(tela, hx('#3d3f42'), (cx + 120, cy + 30), (LARGURA, cy + 30), 1)
+    # arbustos
+    for bx in (cx - 6, cx + 108):
+        pygame.draw.rect(tela, hx('#2f5d39'), (bx, cy + 66, 14, 14))
+        pygame.draw.rect(tela, hx('#3a7146'), (bx + 2, cy + 64, 10, 6))
 
 
-# ==============================================================================
-# DESENHO DO QUARTO
-# ==============================================================================
-def desenharElipse(cx, cy, rx, ry, cor):
-    pygame.draw.ellipse(tela, cor, (cx - rx, cy - ry, rx * 2, ry * 2))
+def desenharCerca(y):
+    for px in range(6, LARGURA, 26):
+        pygame.draw.rect(tela, hx('#caa46f'), (px, y, 3, 16))
+    pygame.draw.rect(tela, hx('#b8945f'), (0, y + 4, LARGURA, 2))
+    pygame.draw.rect(tela, hx('#b8945f'), (0, y + 10, LARGURA, 2))
 
 
 def desenharQuarto():
-    tela.fill(hx('#2c2235'), (0, 0, LARGURA, ALTURA))
-    pygame.draw.rect(tela, hx('#523625'), (0, 210, LARGURA, 90))
+    # parede com leve gradiente
+    desenharCeu(hx('#352a40'), hx('#26203a'), 0, 210)
+    pygame.draw.rect(tela, hx('#5a3c28'), (0, 210, LARGURA, 90))
     for yy in range(210, ALTURA, 15):
-        pygame.draw.line(tela, hx('#382215'), (0, yy), (LARGURA, yy), 1)
+        pygame.draw.line(tela, hx('#3a2517'), (0, yy), (LARGURA, yy), 1)
 
-    desenharElipse(G.camaX + 30, G.camaY + 110, 45, 15, hx('#3f566e'))
+    # tapete oval
+    pygame.draw.ellipse(tela, hx('#3f566e'), (G.camaX - 15, G.camaY + 95, 90, 30))
+    pygame.draw.ellipse(tela, hx('#4d678a'), (G.camaX - 5, G.camaY + 102, 70, 16))
 
-    # Porta principal esquerda
+    # quadro de coração na parede
+    pygame.draw.rect(tela, hx('#caa074'), (150, 18, 34, 26))
+    pygame.draw.rect(tela, hx('#2a2238'), (153, 21, 28, 20))
+    pygame.draw.rect(tela, hx('#e8607f'), (160, 27, 4, 4))
+    pygame.draw.rect(tela, hx('#e8607f'), (168, 27, 4, 4))
+    pygame.draw.rect(tela, hx('#e8607f'), (162, 30, 8, 4))
+    pygame.draw.rect(tela, hx('#e8607f'), (164, 33, 4, 3))
+
+    # porta esquerda
     pygame.draw.rect(tela, hx('#4c311f'), (10, 140, 14, 70))
     pygame.draw.rect(tela, hx('#25160d'), (10, 140, 14, 70), 2)
     pygame.draw.rect(tela, hx('#9e714b'), (10, 140, 14, 70), 1)
     pygame.draw.rect(tela, hx('#ffd15c'), (20, 175, 2, 3))
 
-    # Janela
-    cor_janela = hx('#ffd15c') if G.quartoLuzAcesa else hx('#111528')
-    pygame.draw.rect(tela, cor_janela, (40, 40, 60, 50))
+    # janela (noite/dia)
+    if not G.quartoLuzAcesa:
+        pygame.draw.rect(tela, hx('#0e1430'), (40, 40, 60, 50))
+        for sx, sy in [(50, 50), (62, 58), (75, 48), (88, 64), (55, 72), (82, 78)]:
+            pygame.draw.rect(tela, hx('#fdf6c8'), (sx, sy, 1, 1))
+        pygame.draw.circle(tela, hx('#f2efbf'), (88, 52), 4)  # lua
+    else:
+        desenharCeu(hx('#9fc6dc'), hx('#dfeef2'), 41, 89, 8)
     pygame.draw.rect(tela, hx('#1e110a'), (40, 40, 60, 50), 2)
     pygame.draw.line(tela, hx('#1e110a'), (70, 40), (70, 90), 1)
     pygame.draw.line(tela, hx('#1e110a'), (40, 65), (100, 65), 1)
 
-    # Cama
+    # cama
     pygame.draw.rect(tela, hx('#6e4424'), (G.camaX, G.camaY, 60, 120))
     pygame.draw.rect(tela, hx('#e3e3f0'), (G.camaX + 2, G.camaY + 28, 56, 92))
+    pygame.draw.rect(tela, hx('#cdb4e0'), (G.camaX + 2, G.camaY + 28, 56, 6))
     pygame.draw.rect(tela, hx('#ffffff'), (G.camaX + 6, G.camaY + 6, 20, 15))
     pygame.draw.rect(tela, hx('#ffffff'), (G.camaX + 34, G.camaY + 6, 20, 15))
 
-    # Mesa
+    # mesa + candeeiro
     pygame.draw.rect(tela, hx('#5c3d25'), (G.mesaX, G.mesaY, 55, 60))
     pygame.draw.rect(tela, hx('#331f11'), (G.mesaX + 2, G.mesaY + 60, 4, 30))
     pygame.draw.rect(tela, hx('#331f11'), (G.mesaX + 49, G.mesaY + 60, 4, 30))
     pygame.draw.rect(tela, hx('#382215'), (G.mesaX + 8, G.mesaY + 65, 14, 20))
-    pygame.draw.rect(tela, hx('#382215'), (G.mesaX + 13, G.mesaY + 85, 3, 10))
-    pygame.draw.rect(tela, hx('#68686d'), (G.mesaX + 15, G.mesaY + 20, 20, 4))
+    if G.quartoLuzAcesa:
+        glow = pygame.Surface((40, 40), pygame.SRCALPHA)
+        pygame.draw.circle(glow, (255, 220, 130, 60), (20, 20), 18)
+        tela.blit(glow, (G.mesaX + 24, G.mesaY - 14))
+    pygame.draw.rect(tela, hx('#caa05a'), (G.mesaX + 40, G.mesaY - 6, 6, 12))
+    pygame.draw.rect(tela, hx('#ffe7a0'), (G.mesaX + 37, G.mesaY - 12, 12, 7))
 
+    # notebook na mesa
+    pygame.draw.rect(tela, hx('#68686d'), (G.mesaX + 15, G.mesaY + 20, 20, 4))
     if G.notebookAceso:
-        pygame.draw.rect(tela, hx('#a1e4ff'),
-                         (rectNotebookTela['x'], rectNotebookTela['y'],
-                          rectNotebookTela['width'], rectNotebookTela['height']))
+        pygame.draw.rect(tela, hx('#a1e4ff'), (G.mesaX + 18, G.mesaY + 6, 12, 9))
     else:
         pygame.draw.rect(tela, hx('#1e1e24'), (G.mesaX + 18, G.mesaY + 10, 15, 10))
 
 
+def desenharTelaNotebook(t):
+    """Tela do notebook que 'abre' (zoom) na cena 6 com botão de play."""
+    sx, sy, sw, sh = G.mesaX + 18, G.mesaY + 6, 12, 9
+    px, py, pw, ph = 64, 36, 272, 142
+    x = lerp(sx, px, t)
+    y = lerp(sy, py, t)
+    w = lerp(sw, pw, t)
+    h = lerp(sh, ph, t)
+    pygame.draw.rect(tela, (18, 20, 28), (x - 4, y - 4, w + 8, h + 8))
+    pygame.draw.rect(tela, (40, 44, 56), (x - 4, y - 4, w + 8, h + 8), 1)
+    pygame.draw.rect(tela, (10, 12, 20), (x, y, w, h))
+    pygame.draw.rect(tela, (22, 26, 40), (int(x + 3), int(y + 3), int(w - 6), int(h - 6)))
+    return x, y, w, h
+
+
 # ==============================================================================
-# MÁQUINA DE ESTADOS (ATUALIZAR)
+# ATUALIZAR (MÁQUINA DE ESTADOS)
 # ==============================================================================
+def dist(ax, ay, bx, by):
+    return math.hypot(ax - bx, ay - by)
+
+
 def atualizar():
     gerenciarTransicao()
     caixaDialogo.atualizar()
-
+    G.tempoCeu += 1.0
     if caixaDialogo.ativo:
         return
-
     G.tempoPasso += 0.2
 
     if G.cenaAtual == CENA_1_ESTRADA:
@@ -824,8 +1001,7 @@ def atualizar():
 
     elif G.cenaAtual == CENA_2_KIKAO:
         if G.kikaoEstado == "conduzindo_para_parar":
-            ccx = G.carroX + 24
-            ccy = G.carroY + 10
+            ccx, ccy = G.carroX + 24, G.carroY + 10
             if 85 <= ccx <= 135 and 180 <= ccy <= 202:
                 G.kikaoEstado = "descendo"
                 G.homemX = G.carroX + 15
@@ -833,15 +1009,13 @@ def atualizar():
                 G.homemAtivo = True
                 G.homemVisivel = True
                 G.homemComLanche = False
-                G.statusCena = "Cena 2: Caminha até à porta da lanchonete!"
+                atualizarStatus("Cena 2: Caminha até à porta da lanchonete!")
         elif G.kikaoEstado == "descendo":
-            feetX = G.homemX + 5
-            feetY = G.homemY + 25
-            if abs(feetX - 210) < 12 and feetY <= 150:
+            if abs((G.homemX + 5) - 210) < 12 and (G.homemY + 25) <= 150:
                 G.homemVisivel = False
                 G.kikaoEstado = "comprando"
                 G.dinerTimer = 0
-                G.statusCena = "Cena 2: À espera do lanche... Quase pronto!"
+                atualizarStatus("Cena 2: À espera do lanche...")
         elif G.kikaoEstado == "comprando":
             G.dinerTimer += 1
             if G.dinerTimer >= 100:
@@ -850,16 +1024,12 @@ def atualizar():
                 G.homemX = 205
                 G.homemY = 125
                 G.kikaoEstado = "voltando"
-                G.statusCena = "Cena 2: Lanche na mão! Volta para o carro!"
+                atualizarStatus("Cena 2: Lanche na mão! Volta para o carro!")
         elif G.kikaoEstado == "voltando":
-            mcx = G.homemX + 5
-            mcy = G.homemY + 12
-            ccx = G.carroX + 24
-            ccy = G.carroY + 10
-            if math.hypot(mcx - ccx, mcy - ccy) < 22:
+            if dist(G.homemX + 5, G.homemY + 12, G.carroX + 24, G.carroY + 10) < 22:
                 G.homemAtivo = False
                 G.kikaoEstado = "conduzindo_para_sair"
-                G.statusCena = "Cena 2: Tudo pronto, conduz para a direita!"
+                atualizarStatus("Cena 2: Conduz para a direita!")
         elif G.kikaoEstado == "conduzindo_para_sair":
             if G.carroX > LARGURA:
                 iniciarTransicao(CENA_3_VIAGEM)
@@ -872,65 +1042,25 @@ def atualizar():
         if G.kikaoEstado == "conduzindo_para_parar":
             if G.carroX >= 60:
                 G.carroX = 60
-                G.kikaoEstado = "casal_andando"
+                G.kikaoEstado = "casal_controlado"
                 G.casalX = G.carroX + 15
                 G.casalY = G.carroY - 15
                 G.casalAtivo = True
-        elif G.kikaoEstado == "casal_andando":
-            alvoX = G.casaX + 115
-            alvoY = G.casaY + 90
-            dx = alvoX - G.casalX
-            dy = alvoY - G.casalY
-            dist = math.hypot(dx, dy)
-            casalProximo = dist < 110
+                atualizarStatus("Cena 4: Leva o casal até a porta de casa!")
+        elif G.kikaoEstado == "casal_controlado":
+            perto = (dist(G.casalX + 5, G.casalY + 12, G.casaX + 90, G.casaY + 80) < 130)
             for pet in listaPets:
-                pet.atualizar(casalProximo)
-            if dist > 2:
-                G.casalX += (dx / dist) * G.casalVel
-                G.casalY += (dy / dist) * G.casalVel
-            else:
-                G.kikaoEstado = "casal_entrando_casa"
-        elif G.kikaoEstado == "casal_entrando_casa":
-            alvoX = G.casaX + 35
-            alvoY = G.casaY + 68
-            dx = alvoX - G.casalX
-            dy = alvoY - G.casalY
-            dist = math.hypot(dx, dy)
-            for pet in listaPets:
-                pet.atualizar(True)
-            if dist > 2:
-                G.casalX += (dx / dist) * G.casalVel
-                G.casalY += (dy / dist) * G.casalVel
-            else:
-                if not G.casalChegouPortao:
-                    G.casalChegouPortao = True
-                    G.casalAtivo = False
-                    iniciarTransicao(CENA_5_QUARTO)
+                pet.atualizar(perto)
+            if dist(G.casalX + 5, G.casalY + 25, G.casaX + 35, G.casaY + 68) < 16:
+                G.casalAtivo = False
+                iniciarTransicao(CENA_5_QUARTO)
 
     elif G.cenaAtual == CENA_5_QUARTO:
         if G.quartoEstado == "entrando":
-            alvoXM = G.camaX + 10
-            alvoYM = G.camaY + 10
-            dxM = alvoXM - G.mulherQuartoX
-            dyM = alvoYM - G.mulherQuartoY
-            distM = math.hypot(dxM, dyM)
-
-            alvoXH = G.camaX + 40
-            alvoYH = G.camaY + 10
-            dxH = alvoXH - G.homemQuartoX
-            dyH = alvoYH - G.homemQuartoY
-            distH = math.hypot(dxH, dyH)
-
-            if distM > 1.5:
-                G.mulherQuartoX += (dxM / distM) * 0.8
-                G.mulherQuartoY += (dyM / distM) * 0.8
-            if distH > 1.5:
-                G.homemQuartoX += (dxH / distH) * 0.8
-                G.homemQuartoY += (dyH / distH) * 0.8
-
-            if distM <= 1.5 and distH <= 1.5:
+            if dist(G.mulherQuartoX, G.mulherQuartoY, G.camaX + 20, G.camaY + 55) < 12:
                 G.quartoEstado = "dormindo"
                 G.quartoTimer = 0
+                atualizarStatus("Cena 5: Boa noite...")
         else:
             G.quartoTimer += 1
             if G.quartoEstado == "dormindo":
@@ -941,29 +1071,30 @@ def atualizar():
             elif G.quartoEstado == "acordando":
                 if G.quartoTimer >= 40:
                     G.quartoEstado = "andando"
+                    G.mulherQuartoX = G.camaX + 20
+                    G.mulherQuartoY = G.camaY + 55
+                    atualizarStatus("Cena 5: Leva a Mimi até o notebook!")
             elif G.quartoEstado == "andando":
-                alvoX = G.mesaX + 8
-                alvoY = G.mesaY + 25
-                dx = alvoX - G.mulherQuartoX
-                dy = alvoY - G.mulherQuartoY
-                dist = math.hypot(dx, dy)
-                if dist > 1.5:
-                    G.mulherQuartoX += (dx / dist) * 0.8
-                    G.mulherQuartoY += (dy / dist) * 0.8
-                else:
+                if dist(G.mulherQuartoX, G.mulherQuartoY, G.mesaX + 8, G.mesaY + 28) < 10:
                     G.notebookAceso = True
                     G.quartoEstado = "programando"
                     iniciarTransicao(CENA_6_PROGRAMACAO)
 
     elif G.cenaAtual == CENA_6_PROGRAMACAO:
-        G.cliqueDisponivel = True
-        G.puloCliqueNotebook += 0.08
+        if G.notebookZoom < 1.0:
+            G.notebookZoom = min(1.0, G.notebookZoom + 0.045)
+        elif not G.introMostrada:
+            caixaDialogo.iniciar("[Mimi]: Fiz um vídeo pra ti... toca no play <3")
+            G.introMostrada = True
+        G.cliqueDisponivel = (G.notebookZoom >= 1.0 and G.introMostrada and not caixaDialogo.ativo)
+        G.puloCliqueNotebook += 0.12
 
 
 # ==============================================================================
-# DESENHAR QUADROS
+# DESENHAR
 # ==============================================================================
 def desenhar():
+    _fila_texto.clear()
     shakeX = shakeY = 0
     if G.colidirTimer > 35:
         shakeX = (random.random() - 0.5) * 4.5
@@ -971,36 +1102,33 @@ def desenhar():
 
     tela.fill((0, 0, 0))
 
-    # Cria uma sub-superfície deslocada para o screen shake desenhando tudo
-    # diretamente em 'tela' e depois deslocando no blit final é complexo;
-    # aqui aplicamos o shake no blit para a janela.
-
     if G.cenaAtual == CENA_1_ESTRADA:
-        desenharRelvaComDetalhes()
-        desenharArvoresPixelizadas()
-        tela.fill(COR_CEU_DIA, (0, 0, LARGURA, 90))
-        pygame.draw.circle(tela, hx('#fff9d4'), (320, 45), 14)
-        tela.fill(COR_ASFALTO, (0, 165, LARGURA, 65))
-        linha_tracejada(tela, hx('#f39c12'), 0, 197, LARGURA)
+        tela.fill(COR_GRAMA)
+        desenharCeu(hx('#7fc1e8'), hx('#cfeaf6'), 0, 92)
+        pygame.draw.circle(tela, hx('#fff4c2'), (322, 44), 16)
+        pygame.draw.circle(tela, hx('#fff9d8'), (322, 44), 11)
+        desenharNuvensDeriva([(60, 18, 1.0), (220, 30, 0.8), (320, 14, 1.2)])
+        desenharArvores()
+        desenharFlores(FLORES_CAMPO)
+        desenharEstrada(165, 65, True)
         for obs in G.listaObstaculos:
             obs.desenhar()
         desenharCarroPixel(G.carroX, G.carroY)
 
     elif G.cenaAtual == CENA_2_KIKAO:
-        desenharRelvaComDetalhes()
-        desenharArvoresPixelizadas()
-        tela.fill(COR_ASFALTO, (0, 165, LARGURA, 65))
-        pygame.draw.line(tela, hx('#f39c12'), (0, 197), (LARGURA, 197), 1)
-        desenharLanchoneteKikaoPixel()
+        tela.fill(COR_GRAMA)
+        desenharCeu(hx('#7fc1e8'), hx('#cfeaf6'), 0, 70)
+        desenharNuvensDeriva([(40, 12, 0.9), (300, 20, 1.0)])
+        desenharArvores()
+        desenharEstrada(165, 65, False)
+        desenharLanchonete()
         if G.kikaoEstado == "conduzindo_para_parar":
             pygame.draw.rect(tela, hx('#ffd700'), (85, 180, 50, 22), 1)
-            texto(tela, "VAGA", 110, 168, 10, hx('#ffd700'), align='center')
+            texto(tela, "VAGA", 110, 167, 10, hx('#ffd700'), align='center', bold=True)
         if G.kikaoEstado == "comprando":
-            barX, barY, barW, barH = 190, 105, 40, 5
-            pygame.draw.rect(tela, hx('#1e1e24'), (barX, barY, barW, barH))
-            prog = min(G.dinerTimer / 100, 1.0)
-            pygame.draw.rect(tela, hx('#27ae60'), (barX, barY, int(barW * prog), barH))
-            pygame.draw.rect(tela, hx('#9e714b'), (barX, barY, barW, barH), 1)
+            pygame.draw.rect(tela, hx('#1e1e24'), (190, 105, 40, 5))
+            pygame.draw.rect(tela, hx('#27ae60'), (190, 105, int(40 * min(G.dinerTimer / 100, 1.0)), 5))
+            pygame.draw.rect(tela, hx('#9e714b'), (190, 105, 40, 5), 1)
         for obs in G.listaObstaculos:
             obs.desenhar()
         desenharCarroPixel(G.carroX, G.carroY)
@@ -1012,112 +1140,125 @@ def desenhar():
                 pygame.draw.rect(tela, hx('#228b22'), (G.homemX + 11, G.homemY - 9, 6, 1))
 
     elif G.cenaAtual == CENA_3_VIAGEM:
-        desenharRelvaComDetalhes()
-        desenharArvoresPixelizadas()
-        tela.fill(COR_CEU_ENTARDECER, (0, 0, LARGURA, 90))
-        pygame.draw.circle(tela, hx('#e8a85e'), (300, 60), 12)
-        tela.fill(COR_ASFALTO, (0, 165, LARGURA, 65))
-        linha_tracejada(tela, hx('#f39c12'), 0, 197, LARGURA)
+        tela.fill(hx('#6b4a52'))
+        desenharCeu(hx('#e8763a'), hx('#f4c06a'), 0, 60)
+        desenharCeu(hx('#f4c06a'), hx('#8a6b7a'), 60, 95)
+        pygame.draw.circle(tela, hx('#ffe0a0'), (300, 62), 16)
+        pygame.draw.circle(tela, hx('#ffb96b'), (300, 62), 12)
+        desenharNuvensDeriva([(80, 20, 1.0), (260, 30, 0.8)], cor=(255, 210, 170))
+        # passarinhos
+        for bx, by in [(120, 40), (135, 36), (200, 28)]:
+            pygame.draw.line(tela, hx('#3a2a30'), (bx, by), (bx + 3, by - 2), 1)
+            pygame.draw.line(tela, hx('#3a2a30'), (bx + 3, by - 2), (bx + 6, by), 1)
+        desenharArvores()
+        desenharEstrada(165, 65, True)
         for obs in G.listaObstaculos:
             obs.desenhar()
         desenharCarroPixel(G.carroX, G.carroY)
 
     elif G.cenaAtual == CENA_4_CHEGADA_CASA:
-        desenharRelvaComDetalhes()
-        tela.fill(hx('#5c544e'), (200, 140, 200, 50))
-        cx = 208
-        while cx < LARGURA:
-            pygame.draw.rect(tela, hx('#45403c'), (cx, 140, 1, 50))
-            cx += 16
-        desenharCasaPortaoPixel()
-        tela.fill(COR_ASFALTO, (0, 180, LARGURA, 55))
-        pygame.draw.line(tela, hx('#f39c12'), (0, 207), (LARGURA, 207), 1)
+        tela.fill(COR_GRAMA)
+        desenharCeu(hx('#f0a25a'), hx('#f6d59a'), 0, 34)
+        # calçada
+        pygame.draw.rect(tela, hx('#6a615a'), (200, 138, 200, 54))
+        for cx in range(208, LARGURA, 16):
+            pygame.draw.rect(tela, hx('#534b45'), (cx, 138, 1, 54))
+        desenharCerca(120)
+        desenharFlores([(30, 250, hx('#e57ea0')), (90, 265, hx('#f0e36a')),
+                        (150, 255, hx('#c98be0')), (60, 240, hx('#f0e36a'))])
+        desenharCasa()
+        desenharEstrada(180, 55, False)
         desenharCarroPixel(G.carroX, G.carroY)
         for pet in listaPets:
             pet.desenhar()
         if G.casalAtivo:
             desenharMulherPixel(G.casalX, G.casalY, True)
-            desenharHomemPixel(G.casalX - 10, G.casalY + 1, True)
+            desenharHomemPixel(G.casalX - 12, G.casalY + 2, True)
 
     elif G.cenaAtual == CENA_5_QUARTO:
         desenharQuarto()
         if G.quartoEstado == "entrando":
-            desenharMulherPixel(G.mulherQuartoX, G.mulherQuartoY, True)
             desenharHomemPixel(G.homemQuartoX, G.homemQuartoY, True)
+            desenharMulherPixel(G.mulherQuartoX, G.mulherQuartoY, True)
         elif G.quartoEstado == "dormindo":
             desenharMulherPixel(G.camaX + 10, G.camaY + 10)
             desenharHomemPixel(G.camaX + 40, G.camaY + 10)
             pygame.draw.rect(tela, hx('#cfcfe0'), (G.camaX + 2, G.camaY + 28, 56, 92))
+            pygame.draw.rect(tela, hx('#b9b9d4'), (G.camaX + 2, G.camaY + 28, 56, 4))
         else:
             desenharHomemPixel(G.camaX + 40, G.camaY + 10)
             pygame.draw.rect(tela, hx('#cfcfe0'), (G.camaX + 2, G.camaY + 28, 56, 92))
+            pygame.draw.rect(tela, hx('#b9b9d4'), (G.camaX + 2, G.camaY + 28, 56, 4))
             desenharMulherPixel(G.mulherQuartoX, G.mulherQuartoY, True)
 
-        overlay = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
+        ov = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
         if not G.quartoLuzAcesa:
-            overlay.fill((12, 10, 24, int(0.72 * 255)))
+            ov.fill((12, 10, 24, 180))
         else:
-            overlay.fill((255, 215, 120, int(0.08 * 255)))
-        tela.blit(overlay, (0, 0))
+            ov.fill((255, 215, 120, 18))
+        tela.blit(ov, (0, 0))
 
     elif G.cenaAtual == CENA_6_PROGRAMACAO:
         desenharQuarto()
         desenharHomemPixel(G.camaX + 40, G.camaY + 10)
         pygame.draw.rect(tela, hx('#cfcfe0'), (G.camaX + 2, G.camaY + 28, 56, 92))
-        desenharMulherPixel(G.mulherQuartoX, G.mulherQuartoY)
+        desenharMulherPixel(G.mesaX + 4, G.mesaY + 28)
+        ov = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
+        ov.fill((10, 8, 20, 120))
+        tela.blit(ov, (0, 0))
 
-        overlay = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
-        overlay.fill((255, 215, 120, int(0.08 * 255)))
-        tela.blit(overlay, (0, 0))
-
-        if G.cliqueDisponivel and not caixaDialogo.ativo:
-            pulso = abs(math.sin(G.puloCliqueNotebook) * 4)
-            pygame.draw.circle(tela, hx('#ffffff'),
-                               (rectNotebookTela['x'] + 6, rectNotebookTela['y'] + 4),
-                               int(10 + pulso), 1)
-            offsetY = math.sin(G.puloCliqueNotebook * 1.5) * 3
-            texto(tela, "TOCA AQUI", rectNotebookTela['x'] + 6,
-                  rectNotebookTela['y'] - 18 + offsetY, 11, hx('#ffffff'), align='center')
-
-        if not caixaDialogo.ativo and not G.cliqueDisponivel:
-            esc = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
-            esc.fill((15, 12, 12, int(0.88 * 255)))
-            tela.blit(esc, (0, 0))
-            texto(tela, "FIM DA HISTORIA <3", LARGURA // 2, ALTURA // 2 - 22,
-                  18, COR_BORDA_DIALOGO, align='center', bold=True)
-            texto(tela, "Pressiona 'R' para reiniciar", LARGURA // 2, ALTURA // 2 + 12,
-                  14, COR_TEXTO, align='center')
+        x, y, w, h = desenharTelaNotebook(G.notebookZoom)
+        G.playRect = None
+        if G.cliqueDisponivel:
+            cx, cy = int(x + w / 2), int(y + h / 2)
+            pulso = abs(math.sin(G.puloCliqueNotebook)) * 3
+            r = int(18 + pulso)
+            halo = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
+            pygame.draw.circle(halo, (236, 96, 122, 70), (cx, cy), r + 8)
+            tela.blit(halo, (0, 0))
+            pygame.draw.circle(tela, hx('#ec607a'), (cx, cy), r)
+            pygame.draw.circle(tela, hx('#ffffff'), (cx, cy), r, 2)
+            pygame.draw.polygon(tela, hx('#ffffff'),
+                                [(cx - 5, cy - 8), (cx - 5, cy + 8), (cx + 8, cy)])
+            G.playRect = (cx, cy, r + 6)
+            cap = "O nosso vídeo <3" if G.videoExiste else "Põe um vídeo .mp4 na pasta do jogo"
+            texto(tela, cap, LARGURA / 2, y + h + 4, 11, hx('#ffe9c2'), align='center', bold=True)
+            if G.videoMsg:
+                texto(tela, G.videoMsg, LARGURA / 2, y + h + 20, 9, hx('#bfe8c2'), align='center')
+            texto(tela, "Pressiona R para recomeçar", LARGURA / 2, ALTURA - 14, 9,
+                  hx('#c9c9d6'), align='center')
 
     # HUD de controlo
-    if podeConduzir() or podeMoverHomem():
-        hud = pygame.Surface((205, 18), pygame.SRCALPHA)
-        hud.fill((20, 20, 20, int(0.72 * 255)))
+    if controlandoPersonagem():
+        hud = pygame.Surface((212, 18), pygame.SRCALPHA)
+        hud.fill((20, 20, 20, 184))
         tela.blit(hud, (8, 8))
-        txt = "CONTROLO: CONDUZ O TEU CARRO!" if podeConduzir() else "CONTROLO: MOVIMENTA O RAPAZ A PE!"
-        texto(tela, txt, 12, 11, 10, hx('#ffffff'))
+        if podeConduzir():
+            t = "WASD/SETAS: conduz o teu carro"
+        else:
+            t = "WASD/SETAS: move os personagens"
+        texto(tela, t, 12, 10, 10, hx('#ffffff'))
 
-    # Caixa de diálogo
     caixaDialogo.desenhar()
 
-    # Camada de transição
     if G.transicaoAlfa > 0:
         fade = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
         fade.fill((0, 0, 0, int(G.transicaoAlfa * 255)))
         tela.blit(fade, (0, 0))
 
-    # Escala para a janela (com screen shake aplicado no destino)
+    # Escala pixel-art (nearest) + texto suave por cima
     escalada = pygame.transform.scale(tela, (LARGURA * ESCALA, ALTURA * ESCALA))
     janela.fill((0, 0, 0))
     janela.blit(escalada, (int(shakeX * ESCALA), int(shakeY * ESCALA)))
+    _render_fila_texto()
 
 
 # ==============================================================================
-# INTERAÇÕES DO JOGADOR
+# EVENTOS
 # ==============================================================================
 def avancarDialogo():
     if caixaDialogo.indiceLetra >= len(caixaDialogo.textoCompleto):
         caixaDialogo.ativo = False
-        G.cliqueDisponivel = False
     else:
         caixaDialogo.indiceLetra = float(len(caixaDialogo.textoCompleto))
         caixaDialogo.textoAtual = caixaDialogo.textoCompleto
@@ -1129,14 +1270,12 @@ def tratarClique(mx_janela, my_janela):
     if caixaDialogo.ativo:
         avancarDialogo()
         return
-    if G.cenaAtual == CENA_6_PROGRAMACAO and G.cliqueDisponivel:
-        rt = rectNotebookTela
-        if (rt['x'] - 6 <= mouseX <= rt['x'] + rt['width'] + 6 and
-                rt['y'] - 6 <= mouseY <= rt['y'] + rt['height'] + 6):
-            caixaDialogo.iniciar("[Mulher]: Pronto, agora posso continuar a programar o nosso jogo...")
+    if G.cenaAtual == CENA_6_PROGRAMACAO and G.cliqueDisponivel and G.playRect:
+        cx, cy, r = G.playRect
+        if dist(mouseX, mouseY, cx, cy) <= r:
+            reproduzir_video()
 
 
-# Mapeamento de teclas físicas pygame -> nomes usados internamente
 TECLA_NOME = {
     pygame.K_w: 'w', pygame.K_a: 'a', pygame.K_s: 's', pygame.K_d: 'd',
     pygame.K_UP: 'arrowup', pygame.K_DOWN: 'arrowdown',
@@ -1144,57 +1283,48 @@ TECLA_NOME = {
 }
 
 
-# ==============================================================================
-# LOOP PRINCIPAL
-# ==============================================================================
 def main():
     rodando = True
     while rodando:
-        for evento in pygame.event.get():
-            if evento.type == pygame.QUIT:
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
                 rodando = False
-
-            elif evento.type == pygame.KEYDOWN:
-                nome = TECLA_NOME.get(evento.key)
+            elif ev.type == pygame.KEYDOWN:
+                nome = TECLA_NOME.get(ev.key)
                 if nome:
                     teclasPressionadas[nome] = True
-                if evento.key == pygame.K_RETURN:
-                    if caixaDialogo.ativo:
-                        avancarDialogo()
-                elif evento.key == pygame.K_r:
-                    if (G.cenaAtual == CENA_6_PROGRAMACAO and
-                            not G.cliqueDisponivel and not caixaDialogo.ativo):
+                if ev.key == pygame.K_RETURN and caixaDialogo.ativo:
+                    avancarDialogo()
+                elif ev.key == pygame.K_r:
+                    if G.cenaAtual == CENA_6_PROGRAMACAO and not caixaDialogo.ativo:
                         resetarVariaveisCenas()
                         iniciarTransicao(CENA_1_ESTRADA)
-
-            elif evento.type == pygame.KEYUP:
-                nome = TECLA_NOME.get(evento.key)
+            elif ev.type == pygame.KEYUP:
+                nome = TECLA_NOME.get(ev.key)
                 if nome:
                     teclasPressionadas[nome] = False
-
-            elif evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
-                if podeConduzir() or podeMoverHomem():
-                    G.toqueDestinoX = evento.pos[0] / ESCALA
-                    G.toqueDestinoY = evento.pos[1] / ESCALA
+            elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                if controlandoPersonagem():
+                    G.toqueDestinoX = ev.pos[0] / ESCALA
+                    G.toqueDestinoY = ev.pos[1] / ESCALA
                     G.toqueAtivo = True
                 else:
-                    tratarClique(evento.pos[0], evento.pos[1])
-
-            elif evento.type == pygame.MOUSEMOTION:
-                if G.toqueAtivo and (podeConduzir() or podeMoverHomem()):
-                    G.toqueDestinoX = evento.pos[0] / ESCALA
-                    G.toqueDestinoY = evento.pos[1] / ESCALA
-
-            elif evento.type == pygame.MOUSEBUTTONUP and evento.button == 1:
+                    tratarClique(ev.pos[0], ev.pos[1])
+            elif ev.type == pygame.MOUSEMOTION:
+                if G.toqueAtivo and controlandoPersonagem():
+                    G.toqueDestinoX = ev.pos[0] / ESCALA
+                    G.toqueDestinoY = ev.pos[1] / ESCALA
+            elif ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
                 G.toqueAtivo = False
 
-        # Update
         atualizarMovimentoCarroJogador()
         atualizarMovimentoHomem()
+        atualizarMovimentoCasalCena4()
+        atualizarMovimentoQuartoEntrando()
+        atualizarMovimentoMimiQuarto()
         gerenciarObstaculosEColisoes()
         atualizar()
 
-        # Render
         desenhar()
         pygame.display.flip()
         clock.tick(FPS)
