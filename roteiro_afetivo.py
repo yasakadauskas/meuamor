@@ -192,6 +192,16 @@ def _buf(n):
     return array.array('h', [0] * n)
 
 
+def _mk_sound(buf):
+    """Cria um Sound a partir de amostras mono SEM depender de numpy.
+    Monta bytes estéreo intercalados (o mixer está em 2 canais, 16 bits)."""
+    n = len(buf)
+    estereo = array.array('h', bytes(4 * n))  # 2 canais * 2 bytes por amostra
+    estereo[0::2] = buf  # canal esquerdo
+    estereo[1::2] = buf  # canal direito
+    return pygame.mixer.Sound(buffer=estereo.tobytes())
+
+
 def _gerar_som_motor():
     ms = 800
     n = int(SAMPLE_RATE * ms / 1000)
@@ -202,7 +212,7 @@ def _gerar_som_motor():
              math.sin(2 * math.pi * 160 * t) * 0.3 +
              (random.random() - 0.5) * 0.15)
         buf[i] = int(clamp(v, -1, 1) * 0.25 * 32767)
-    return pygame.sndarray.make_sound(buf)
+    return _mk_sound(buf)
 
 
 def _gerar_som_passos():
@@ -211,7 +221,7 @@ def _gerar_som_passos():
     for i in range(n):
         env = 1.0 - (i / n) ** 0.5
         buf[i] = int((random.random() - 0.5) * 2 * env * 0.35 * 32767)
-    return pygame.sndarray.make_sound(buf)
+    return _mk_sound(buf)
 
 
 def _gerar_som_colisao():
@@ -223,7 +233,7 @@ def _gerar_som_colisao():
         freq = max(30, 200 - t * 400)
         v = math.sin(2 * math.pi * freq * t) * env + (random.random() - 0.5) * 0.4 * env
         buf[i] = int(clamp(v, -1, 1) * 0.5 * 32767)
-    return pygame.sndarray.make_sound(buf)
+    return _mk_sound(buf)
 
 
 def _gerar_bip(freq, ms, vol=0.2):
@@ -232,7 +242,7 @@ def _gerar_bip(freq, ms, vol=0.2):
     for i in range(n):
         env = math.sin(math.pi * i / n)
         buf[i] = int(math.sin(2 * math.pi * freq * i / SAMPLE_RATE) * env * vol * 32767)
-    return pygame.sndarray.make_sound(buf)
+    return _mk_sound(buf)
 
 
 def _gerar_transicao():
@@ -243,7 +253,7 @@ def _gerar_transicao():
         freq = 220 + (i / n) * 440
         env = math.sin(math.pi * i / n)
         buf[i] = int(math.sin(2 * math.pi * freq * t) * env * 0.28 * 32767)
-    return pygame.sndarray.make_sound(buf)
+    return _mk_sound(buf)
 
 
 def _gerar_fanfarra():
@@ -259,7 +269,7 @@ def _gerar_fanfarra():
                 env = math.sin(math.pi * i / sn)
                 buf[pos + i] = int(math.sin(2 * math.pi * freq * i / SAMPLE_RATE) * env * 0.4 * 32767)
         pos += sn
-    return pygame.sndarray.make_sound(buf)
+    return _mk_sound(buf)
 
 
 def _gerar_ding():
@@ -270,7 +280,7 @@ def _gerar_ding():
         v = (math.sin(2 * math.pi * 880 * i / SAMPLE_RATE) * 0.6 +
              math.sin(2 * math.pi * 1320 * i / SAMPLE_RATE) * 0.3) * env
         buf[i] = int(v * 0.35 * 32767)
-    return pygame.sndarray.make_sound(buf)
+    return _mk_sound(buf)
 
 
 def _gerar_musica_intro():
@@ -292,7 +302,7 @@ def _gerar_musica_intro():
                     sq = 1.0 if math.sin(2 * math.pi * freq * i / SAMPLE_RATE) > 0 else -1.0
                     buf[pos + i] = int(sq * env * 0.18 * 32767)
         pos += sn
-    return pygame.sndarray.make_sound(buf)
+    return _mk_sound(buf)
 
 
 def _gerar_grilos():
@@ -311,7 +321,7 @@ def _gerar_grilos():
             v += math.sin(2 * math.pi * 4300 * t) * env * 0.06
             v += math.sin(2 * math.pi * 5200 * t) * env * 0.03
         buf[i] = int(clamp(v, -1, 1) * 32767)
-    return pygame.sndarray.make_sound(buf)
+    return _mk_sound(buf)
 
 
 # Sons declarados aqui; gerados depois (ver gerar_sons), para a tela de "carregando".
@@ -581,8 +591,10 @@ class G:
     coracoesColetaveis = []
     coracoesPegos = 0
 
-    # Cena de dentro do carro (abertura)
-    falaCarroIdx = 0
+    # Cena de dentro do carro (abertura) com escolhas
+    noCarro = 'inicio'
+    carroEscolha = None
+    carroBtnRects = []
 
 
 teclasPressionadas = {}
@@ -794,35 +806,78 @@ def desenharCoracoes():
         c.desenhar()
 
 
-# ----- Plaquinhas escondidas na estrada (cenas 1 e 3) -----
-PLACAS_MENSAGENS = [
-    "Te amo \u2665", "faltam 2 km pra casa", "quase lá, mo \u2665",
-    "dirige com carinho", "sdds tuas \u2665", "buzina se me ama",
-]
-
-# Falas da cena de abertura (dentro do carro)
-FALAS_CARRO = [
-    "mimi: quer pedir um ifood??",
-    "lusca: claro mo, quer comer o que?",
-    "mimi: pode escolher",
-    "lusca: não sei, eu sempre escolho errado",
-    "mimi: lanchinho??",
-    "lusca: uhuuuuul",
+# ----- Plaquinhas FIXAS na estrada (cenas 1 e 3) -----
+# Posições fixas; o texto fica parado na beira da estrada enquanto o carro passa.
+PLACAS_FIXAS = [
+    (40, 110, "te amooo"),
+    (150, 124, "vc é incrível moo"),
+    (250, 110, "mey gatinhooo"),
+    (348, 124, "mwwwwac"),
 ]
 
 
-def atualizar_placas():
-    """Move e gera as plaquinhas; chamado nas cenas de estrada."""
-    G.placaTimer += 1
-    if G.placaTimer >= 200:
-        G.placaTimer = 0
-        msg = random.choice(PLACAS_MENSAGENS)
-        G.placas.append({'x': float(LARGURA + 20), 'y': 126.0, 'txt': msg})
-    indo = k('d', 'arrowright') or (G.toqueAtivo and G.toqueDestinoX > G.carroX + 24)
-    velF = G.velocidadeManual if indo else 0
-    for p in G.placas:
-        p['x'] -= (0.6 + velF)
-    G.placas = [p for p in G.placas if p['x'] > -90]
+def criar_placas():
+    G.placas = [{'x': float(px), 'y': float(py), 'txt': txt}
+                for (px, py, txt) in PLACAS_FIXAS]
+
+
+# ----- Diálogo com escolhas (cena de abertura no carro) -----
+# Cada nó é 'fala' (mostra texto e segue p/ 'next') ou 'escolha' (mostra texto + 2 botões).
+DIALOGO_CARRO = {
+    'inicio': {'tipo': 'escolha', 'txt': "mimi: quer pedir um ifood??",
+               'opcoes': [("1. pedir ifood", 'r1'), ("2. fazer janta", 'r2')]},
+
+    'r1': {'tipo': 'fala', 'txt': "lusca: claro mo, quer comer o que?", 'next': 'm1'},
+    'm1': {'tipo': 'fala', 'txt': "mimi: pode escolher", 'next': 'esc2'},
+    'esc2': {'tipo': 'escolha', 'txt': "lusca: hmm... (escolhe a resposta)",
+             'opcoes': [("1. nao sei escolher", 'r1a'), ("2. pode ser ifood", 'r1b')]},
+    'r1a': {'tipo': 'fala', 'txt': "lusca: não sei, eu sempre escolho errado", 'next': 'fim1'},
+    'r1b': {'tipo': 'fala', 'txt': "lusca: pode ser ifood ent moo", 'next': 'fim1'},
+
+    'r2': {'tipo': 'fala', 'txt': "lusca: vamo fazer janta moo", 'next': 'm2'},
+    'm2': {'tipo': 'fala', 'txt': "mimi: afff", 'next': 'fim1'},
+
+    'fim1': {'tipo': 'fala', 'txt': "mimi: lanchinho??", 'next': 'fim2'},
+    'fim2': {'tipo': 'fala', 'txt': "lusca: uhuuuuul", 'next': None},
+}
+
+
+def processar_dialogo_carro():
+    """Avança a árvore de diálogo do carro quando nada está na tela."""
+    no = DIALOGO_CARRO.get(G.noCarro)
+    if no is None:
+        iniciarTransicao(CENA_1_ESTRADA)
+        return
+    if no['tipo'] == 'fala':
+        caixaDialogo.iniciar(no['txt'])
+        G.noCarro = no.get('next')  # já avança; ao fechar a fala, processa o próximo
+    elif no['tipo'] == 'escolha':
+        caixaDialogo.iniciar(no['txt'])
+        G.carroEscolha = list(no['opcoes'])  # gates the scene até escolher
+
+
+def escolher_opcao_carro(idx):
+    if not G.carroEscolha:
+        return
+    if 0 <= idx < len(G.carroEscolha):
+        _label, prox = G.carroEscolha[idx]
+        G.carroEscolha = None
+        caixaDialogo.ativo = False
+        G.noCarro = prox
+
+
+def desenharEscolhasCarro():
+    if not G.carroEscolha:
+        return
+    G.carroBtnRects = []
+    bx, bw, bh = 30, 340, 16
+    base_y = 252
+    for i, (label, _prox) in enumerate(G.carroEscolha):
+        by = base_y + i * 19
+        pygame.draw.rect(tela, hx('#3a2516'), (bx, by, bw, bh))
+        pygame.draw.rect(tela, hx('#caa074'), (bx, by, bw, bh), 1)
+        texto(tela, label, bx + 8, by + 2, 11, hx('#ffe9c2'), bold=True)
+        G.carroBtnRects.append((bx, by, bw, bh, i))
 
 
 def desenharPlacas():
@@ -1186,7 +1241,8 @@ def resetarVariaveisCenas():
     G.placaTimer = 0
     G.coracoesColetaveis = []
     G.coracoesPegos = 0
-    G.falaCarroIdx = 0
+    G.noCarro = 'inicio'
+    G.carroEscolha = None
     parar_ambiente()
     caixaDialogo.ativo = False
     for key in list(teclasPressionadas.keys()):
@@ -1224,10 +1280,12 @@ def gerenciarTransicao():
         G.placaTimer = 0
         G.coracoesColetaveis = []
         if G.cenaAtual == CENA_DENTRO_CARRO:
-            G.falaCarroIdx = 0
+            G.noCarro = 'inicio'
+            G.carroEscolha = None
             atualizarStatus("No carro: combinem o pedido <3")
         elif G.cenaAtual == CENA_1_ESTRADA:
             criar_coletaveis(CENA_1_ESTRADA)
+            criar_placas()
             atualizarStatus("Cena 1: A Viagem Começa...  (pega os corações \u2665)")
         elif G.cenaAtual == CENA_2_KIKAO:
             G.carroX = -50
@@ -1236,6 +1294,7 @@ def gerenciarTransicao():
         elif G.cenaAtual == CENA_3_VIAGEM:
             G.carroX = -60
             criar_coletaveis(CENA_3_VIAGEM)
+            criar_placas()
             atualizarStatus("Cena 3: Desvia-te do tráfego rápido!  (pega os corações \u2665)")
         elif G.cenaAtual == CENA_4_CHEGADA_CASA:
             G.carroX = -60
@@ -1560,14 +1619,15 @@ def desenharDentroCarro():
             pygame.draw.rect(tela, cor_cabelo, (cx - 18, 158, 6, 54))
             pygame.draw.rect(tela, cor_cabelo, (cx + 12, 158, 6, 54))
 
-    ocupante(118, hx('#4f2c15'), hx('#225d87'))        # lusca
-    ocupante(286, hx('#6b3a1f'), hx('#2d7a3a'), True)  # mimi
+    # volante: desenhado ANTES do boneco (fica atrás dele) e um pouco mais alto
+    vy = 236
+    pygame.draw.circle(tela, hx('#15100d'), (118, vy), 30)
+    pygame.draw.circle(tela, hx('#2a201a'), (118, vy), 30, 4)
+    pygame.draw.circle(tela, hx('#15100d'), (118, vy), 9)
+    pygame.draw.line(tela, hx('#2a201a'), (90, vy), (146, vy), 3)
 
-    # volante na frente do lusca
-    pygame.draw.circle(tela, hx('#15100d'), (118, 250), 30)
-    pygame.draw.circle(tela, hx('#2a201a'), (118, 250), 30, 4)
-    pygame.draw.circle(tela, hx('#15100d'), (118, 250), 9)
-    pygame.draw.line(tela, hx('#2a201a'), (90, 250), (146, 250), 3)
+    ocupante(118, hx('#4f2c15'), hx('#225d87'))        # lusca (cobre o volante)
+    ocupante(286, hx('#6b3a1f'), hx('#2d7a3a'), True)  # mimi
 
 
 # ==============================================================================
@@ -1731,15 +1791,11 @@ def atualizar():
         iniciar_ambiente()  # grilos / clima de noite dentro de casa
 
     if G.cenaAtual == CENA_DENTRO_CARRO:
-        # Sequência de falas de abertura; ao terminar, vai para a estrada
-        if G.falaCarroIdx < len(FALAS_CARRO):
-            caixaDialogo.iniciar(FALAS_CARRO[G.falaCarroIdx])
-            G.falaCarroIdx += 1
-        else:
-            iniciarTransicao(CENA_1_ESTRADA)
+        # Diálogo com escolhas; ao chegar ao fim da árvore, vai para a estrada
+        if not G.carroEscolha:
+            processar_dialogo_carro()
 
     elif G.cenaAtual == CENA_1_ESTRADA:
-        atualizar_placas()
         coletar_coracoes_estrada()
         if G.carroX >= LARGURA:
             iniciarTransicao(CENA_2_KIKAO)
@@ -1782,7 +1838,6 @@ def atualizar():
                 iniciarTransicao(CENA_3_VIAGEM)
 
     elif G.cenaAtual == CENA_3_VIAGEM:
-        atualizar_placas()
         coletar_coracoes_estrada()
         # Diálogo do Lusca: exibir quando o carro entra na tela
         if not G.luscaDialogoMostrado and G.carroX >= 20:
@@ -2060,6 +2115,7 @@ def desenhar():
         texto(tela, G.volumeMsg, LARGURA - 120, 10, 10, hx('#ffe9c2'), bold=True)
 
     caixaDialogo.desenhar()
+    desenharEscolhasCarro()
 
     if G.pausado:
         desenharOverlayPausa()
@@ -2199,6 +2255,17 @@ def main():
                 nome = TECLA_NOME.get(ev.key)
                 if nome:
                     teclasPressionadas[nome] = True
+                # Escolhas do diálogo do carro têm prioridade
+                if G.cenaAtual == CENA_DENTRO_CARRO and G.carroEscolha:
+                    if ev.key in (pygame.K_1, pygame.K_KP1):
+                        escolher_opcao_carro(0)
+                    elif ev.key in (pygame.K_2, pygame.K_KP2):
+                        escolher_opcao_carro(1)
+                    elif ev.key == pygame.K_RETURN:
+                        # só termina de digitar a fala; a escolha continua aberta
+                        caixaDialogo.indiceLetra = float(len(caixaDialogo.textoCompleto))
+                        caixaDialogo.textoAtual = caixaDialogo.textoCompleto
+                    continue
                 if ev.key == pygame.K_ESCAPE and G.mostrarCartinha:
                     G.mostrarCartinha = False
                 # Controles globais de som/tela
