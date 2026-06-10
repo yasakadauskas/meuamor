@@ -178,9 +178,9 @@ CENA_6_PROGRAMACAO = 6
 # ==============================================================================
 # SOM PROCEDURAL
 # ==============================================================================
-pygame.mixer.pre_init(44100, -16, 1, 512)
+pygame.mixer.pre_init(44100, -16, 2, 512)
 pygame.init()
-pygame.mixer.init()
+pygame.mixer.init(44100, -16, 2, 512)
 
 SAMPLE_RATE = 44100
 SONS_OK = False
@@ -314,21 +314,35 @@ _musica_fundo_tocando = False
 def _carregar_musica_fundo():
     global MUSICA_FUNDO_OK
     base = pasta_base()
-    caminhos = [
-        os.path.join(base, 'videoplayback.mp3'),
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'videoplayback.mp3'),
-    ]
+    script_dir = os.path.dirname(os.path.abspath(__file__)) if not getattr(sys, 'frozen', False) else base
+    cwd = os.getcwd()
+    caminhos = []
+    for nome in ('videoplayback.mp3', 'musica.mp3', 'music.mp3', 'fundo.mp3'):
+        for d in (base, script_dir, cwd):
+            caminhos.append(os.path.join(d, nome))
+    # Qualquer MP3 na pasta base
+    try:
+        for f in sorted(os.listdir(base)):
+            if f.lower().endswith('.mp3'):
+                caminhos.append(os.path.join(base, f))
+    except OSError:
+        pass
+    vistos = set()
     for p in caminhos:
+        if p in vistos:
+            continue
+        vistos.add(p)
         if os.path.exists(p):
             try:
                 pygame.mixer.music.load(p)
-                pygame.mixer.music.set_volume(0.35)
+                pygame.mixer.music.set_volume(0.40)
                 MUSICA_FUNDO_OK = True
-                print(f"[Música] Carregada: {p}")
+                print(f"[Musica] Carregada: {p}")
                 return
             except Exception as e:
-                print(f"[Música] Erro ao carregar {p}: {e}")
-    print("[Música] videoplayback.mp3 não encontrado na pasta do jogo.")
+                print(f"[Musica] Erro: {e}")
+    print("[Musica] Nenhum MP3 encontrado. Coloca videoplayback.mp3 na pasta do jogo.")
+
 
 
 _carregar_musica_fundo()
@@ -1137,25 +1151,31 @@ def desenharQuarto():
     pygame.draw.rect(tela, hx('#e8607f'), (162, 30, 8, 4))
     pygame.draw.rect(tela, hx('#e8607f'), (164, 33, 4, 3))
 
-    # JANELA CORRIGIDA: posicionada na parede esquerda, tamanho adequado
+    # JANELA: posicionada na parede esquerda
     janela_x, janela_y = 10, 40
     janela_w, janela_h = 80, 65
-    # Fundo da janela (dia/noite)
+    # Usa subsurface para clipar o conteúdo da janela
+    janela_surf = pygame.Surface((janela_w, janela_h))
     if not G.quartoLuzAcesa:
         # Noite: céu escuro com estrelas
-        pygame.draw.rect(tela, hx('#0e1430'), (janela_x, janela_y, janela_w, janela_h))
-        for sx, sy in [(janela_x+8, janela_y+8), (janela_x+22, janela_y+18),
-                       (janela_x+38, janela_y+10), (janela_x+55, janela_y+22),
-                       (janela_x+18, janela_y+40), (janela_x+50, janela_y+48)]:
-            pygame.draw.rect(tela, hx('#fdf6c8'), (sx, sy, 1, 1))
-        pygame.draw.circle(tela, hx('#f2efbf'), (janela_x + 62, janela_y + 14), 5)
+        janela_surf.fill(hx('#0e1430'))
+        for sx, sy in [(8, 8), (22, 18), (38, 10), (55, 22), (18, 40), (50, 48)]:
+            pygame.draw.rect(janela_surf, hx('#fdf6c8'), (sx, sy, 1, 1))
+        pygame.draw.circle(janela_surf, hx('#f2efbf'), (62, 14), 5)
     else:
-        # Dia: céu claro
-        desenharCeu(hx('#9fc6dc'), hx('#dfeef2'), janela_y, janela_y + janela_h, 8)
-        # Nuvenzinha dentro da janela
-        pygame.draw.rect(tela, hx('#ffffff'), (janela_x + 30, janela_y + 20, 20, 8))
-        pygame.draw.rect(tela, hx('#ffffff'), (janela_x + 34, janela_y + 16, 12, 8))
-    # Moldura da janela
+        # Dia: gradiente de céu claro desenhado diretamente na subsurface
+        bandas = 8
+        h_banda = janela_h / bandas
+        c1, c2 = hx('#9fc6dc'), hx('#dfeef2')
+        for i in range(bandas):
+            t = i / max(bandas - 1, 1)
+            cor = lerp_cor(c1, c2, t)
+            pygame.draw.rect(janela_surf, cor, (0, int(i * h_banda), janela_w, int(h_banda) + 1))
+        # Nuvenzinha
+        pygame.draw.rect(janela_surf, hx('#ffffff'), (20, 20, 20, 8))
+        pygame.draw.rect(janela_surf, hx('#ffffff'), (24, 16, 12, 8))
+    tela.blit(janela_surf, (janela_x, janela_y))
+    # Moldura da janela por cima
     pygame.draw.rect(tela, hx('#1e110a'), (janela_x, janela_y, janela_w, janela_h), 2)
     # Divisórias (cruz)
     pygame.draw.line(tela, hx('#1e110a'), (janela_x + janela_w // 2, janela_y),
@@ -1259,47 +1279,42 @@ def desenharTelaIntro():
 # CARTINHA (overlay)
 # ==============================================================================
 TEXTO_CARTA = [
-    "Para o meu amor <3",
-    "",
-    "Cada momento contigo",
-    "é o meu lugar favorito.",
-    "",
-    "Obrigada por existires",
-    "e por seres tudo isso.",
-    "",
-    "Com todo o meu amor,",
-    "para sempre.",
-    "",
-    "♥ ♥ ♥",
+    ("Para o meu amor <3", True, True),
+    ("", False, False),
+    ("Obrigada por passar esses", False, False),
+    ("8 meses ao meu lado,", False, False),
+    ("você é meu tudo  ♥", False, False),
+    ("", False, False),
+    ("Quero estar pra sempre", False, False),
+    ("com você meu gatinho  ♥", False, False),
+    ("", False, False),
+    ("Com muito amor:", False, False),
+    ("mimisf  ♥", True, True),
 ]
 
 
 def desenharOverlayCarta():
-    """Desenha a cartinha como overlay em toda a tela."""
+    """Desenha a cartinha como overlay em toda a tela (sem linhas)."""
     # Fundo escuro semitransparente
     ov = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
     ov.fill((0, 0, 0, 200))
     tela.blit(ov, (0, 0))
 
-    # Papel da carta
-    cx, cy, cw, ch = 30, 20, 340, 255
+    # Papel da carta (sem linhas)
+    cx, cy, cw, ch = 30, 20, 340, 245
     pygame.draw.rect(tela, hx('#fffdf0'), (cx, cy, cw, ch))
     pygame.draw.rect(tela, hx('#e8c88a'), (cx, cy, cw, ch), 2)
-    # Linhas decorativas
-    for ly in range(cy + 32, cy + ch - 10, 14):
-        pygame.draw.line(tela, hx('#e0d8c0'), (cx + 12, ly), (cx + cw - 12, ly), 1)
     # Coração no topo
     texto(tela, "♥", LARGURA // 2, cy + 6, 14, hx('#c0305a'), align='center', bold=True)
     # Texto da carta
-    y_off = cy + 22
-    for linha in TEXTO_CARTA:
+    y_off = cy + 24
+    for (linha, destaque, bold_linha) in TEXTO_CARTA:
         if linha == "":
-            y_off += 7
+            y_off += 8
             continue
-        cor_linha = hx('#c0305a') if '<3' in linha or '♥' in linha else hx('#3a2520')
-        bold_linha = linha.startswith("Para") or "♥" in linha
+        cor_linha = hx('#c0305a') if destaque else hx('#3a2520')
         texto(tela, linha, LARGURA // 2, y_off, 11, cor_linha, align='center', bold=bold_linha)
-        y_off += 14
+        y_off += 16
     # Botão fechar
     bx, by, bw, bh = LARGURA // 2 - 40, cy + ch - 22, 80, 16
     pygame.draw.rect(tela, hx('#c0305a'), (bx, by, bw, bh))
