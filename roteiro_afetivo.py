@@ -1,32 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-ROTEIRO AFETIVO - Uma aventura pixelizada acolhedora de carinho e código.
-
-Versão Python (pygame).
-
-Como rodar (precisa de Python instalado):
-    python roteiro_afetivo.py
-    (o pygame é instalado automaticamente na primeira execução se faltar)
-
-Como gerar um executável para qualquer PC SEM Python:
-    Windows:  duplo-clique em build_windows.bat  (ou via GitHub Actions)
-    -> gera dist/RoteiroAfetivo.exe
-
->>> SOBRE O VÍDEO E MÚSICA <<<
-Coloca o teu vídeo na MESMA PASTA do jogo (ao lado do .exe), de preferência
-chamado:  meu_video.mp4
-IMPORTANTE: usa .mp4 com vídeo H.264 e áudio AAC — é o formato que o Windows
-abre sem precisar de codec extra. Evita .mkv, .webm ou .mp4 com H.265/HEVC.
-(Aceita também .wmv .m4v .avi .mov, mas o .mp4 H.264 é o mais garantido.)
-Coloca o arquivo  videoplayback.mp3  também na MESMA PASTA do jogo.
-
-Controlos:
-    - WASD ou setas: move o carro / o casal / a Mimi (em TODAS as cenas).
-    - Clica e arrasta com o rato dentro do ecrã para guiar também.
-    - ENTER ou clique avança os diálogos.
-    - R reinicia.
-    - P pausa.  M muta o som.  + / - ajusta o volume.  F11 tela cheia.
-"""
 
 import math
 import random
@@ -156,7 +127,6 @@ def abrir_cartinha():
             return
         except Exception:
             pass
-    # Se não encontrou arquivo, mostra mensagem embutida
     G.mostrarCartinha = True
     G.cartaMsg = ""
 
@@ -316,7 +286,6 @@ def _gerar_grilos():
         t = i / SAMPLE_RATE
         # brisa baixinha
         v = (random.random() - 0.5) * 0.05
-        # chirp ritmado a cada ~0.5s
         fase = t % 0.5
         if fase < 0.07:
             env = math.sin(math.pi * fase / 0.07)
@@ -326,7 +295,6 @@ def _gerar_grilos():
     return _mk_sound(buf)
 
 
-# Sons declarados aqui; gerados depois (ver gerar_sons), para a tela de "carregando".
 SOM_MOTOR = SOM_PASSOS = SOM_COLISAO = SOM_BIP = None
 SOM_TRANSICAO = SOM_CHEGADA = SOM_DING = SOM_INTRO = SOM_GRILOS = None
 
@@ -367,7 +335,6 @@ def _carregar_musica_fundo():
             p = os.path.join(d, nome)
             if p not in caminhos:
                 caminhos.append(p)
-    # Qualquer MP3/OGG na pasta base e no script_dir
     for search_dir in set([base, script_dir, cwd]):
         try:
             for f in sorted(os.listdir(search_dir)):
@@ -392,7 +359,6 @@ def _carregar_musica_fundo():
             return
         except Exception as e:
             print(f"[Musica] Nao carregou {os.path.basename(p)}: {e}")
-    # Nenhum arquivo funcionou — tenta converter MP3 -> OGG com pydub
     print("[Musica] Tentando converter MP3 para OGG via pydub...")
     for search_dir in set([base, script_dir, cwd]):
         try:
@@ -420,8 +386,6 @@ def _carregar_musica_fundo():
     print("[Musica] e coloca o videoplayback.ogg na mesma pasta do .py")
 
 
-# NÃO carregamos a música aqui — aguardamos até após pygame.display.set_mode()
-# para garantir que o mixer está totalmente inicializado.
 
 _t_motor = 0
 _t_passos = 0
